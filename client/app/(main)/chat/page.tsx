@@ -161,6 +161,9 @@ export default function ChatPage() {
   // Profile Edit
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState(user?.bio || '');
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [avatarInputUrl, setAvatarInputUrl] = useState('');
+  const [updatingAvatar, setUpdatingAvatar] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -589,6 +592,22 @@ export default function ChatPage() {
     }
   };
 
+  const handleSaveAvatar = async (newUrl?: string) => {
+    const targetUrl = newUrl || avatarInputUrl;
+    if (!targetUrl.trim()) return;
+    setUpdatingAvatar(true);
+    try {
+      const res = await api.patch('/users/profile', { avatar: targetUrl });
+      updateUser(res.data.data || res.data);
+      showToast({ title: 'Profile avatar updated!', variant: 'success' });
+      setIsAvatarModalOpen(false);
+    } catch (err: any) {
+      showToast({ title: 'Failed to update avatar', description: err.response?.data?.message || err.message, variant: 'error' });
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
+
   if (!initialized || !user) {
     return (
       <div className="flex h-screen items-center justify-center bg-canvas">
@@ -902,7 +921,27 @@ export default function ChatPage() {
         {activeTab === 'profile' && (
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
             <div className="text-center space-y-3">
-              <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="xl" className="mx-auto border-2 border-[#EE673A]" />
+              <div
+                className="relative inline-block mx-auto cursor-pointer group"
+                onClick={() => {
+                  setAvatarInputUrl(user.avatar || '');
+                  setIsAvatarModalOpen(true);
+                }}
+              >
+                <Avatar
+                  initials={user.username.slice(0, 2)}
+                  src={user.avatar}
+                  size="xl"
+                  className="mx-auto border-2 border-[#EE673A] transition-transform group-hover:scale-105"
+                />
+                <div
+                  className="absolute bottom-0 right-0 p-2 rounded-full bg-[#EE673A] text-white shadow-lg group-hover:scale-110 transition-all border-2 border-surface"
+                  title="Change Avatar"
+                >
+                  <Camera className="w-4 h-4" />
+                </div>
+              </div>
+
               <div>
                 <h3 className="font-display font-bold text-lg text-text-primary">{user.username}</h3>
                 <p className="text-xs text-text-tertiary">{user.email}</p>
@@ -961,53 +1000,44 @@ export default function ChatPage() {
         )}
 
         {/* Floating Bottom Navigation Bar */}
-        <div className="p-3 bg-surface/90 backdrop-blur-md border-t border-subtle flex items-center justify-between relative">
-          <div className="flex-1 flex items-center justify-around">
-            <button
-              onClick={() => setActiveTab('chats')}
-              className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'chats' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-              }`}
-            >
-              <MessageSquare className="w-5 h-5" />
-              <span className="text-[10px]">Chats</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('call')}
-              className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'call' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-              }`}
-            >
-              <Phone className="w-5 h-5" />
-              <span className="text-[10px]">Call</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('updates')}
-              className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'updates' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-              }`}
-            >
-              <Sparkles className="w-5 h-5" />
-              <span className="text-[10px]">Updates</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('profile')}
-              className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'profile' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-              }`}
-            >
-              <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="sm" />
-              <span className="text-[10px]">Profile</span>
-            </button>
-          </div>
-
+        <nav className="py-3 px-4 bg-surface/90 backdrop-blur-md border-t border-subtle flex items-center justify-around relative">
           <button
-            onClick={() => setIsNewChatModalOpen(true)}
-            className="w-12 h-12 rounded-full bg-gradient-to-tr from-[#EE673A] to-[#FF8A64] text-white flex items-center justify-center shadow-lg shadow-[#EE673A]/40 hover:scale-105 active:scale-95 transition-all ml-2"
+            onClick={() => setActiveTab('chats')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'chats' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+            }`}
           >
-            <Plus className="w-6 h-6" />
+            <MessageSquare className="w-5 h-5" />
+            <span className="text-[10px]">Chats</span>
           </button>
-        </div>
+          <button
+            onClick={() => setActiveTab('call')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'call' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+            }`}
+          >
+            <Phone className="w-5 h-5" />
+            <span className="text-[10px]">Call</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('updates')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'updates' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+            }`}
+          >
+            <Sparkles className="w-5 h-5" />
+            <span className="text-[10px]">Updates</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
+              activeTab === 'profile' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+            }`}
+          >
+            <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="sm" />
+            <span className="text-[10px]">Profile</span>
+          </button>
+        </nav>
       </div>
 
       {/* ========================================================================= */}
@@ -1752,6 +1782,90 @@ export default function ChatPage() {
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setIsGroupModalOpen(false)}>Cancel</Button>
             <Button variant="primary" onClick={handleCreateGroup}>Create Group</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ----------------- MODAL: CHANGE AVATAR ----------------- */}
+      <Modal open={isAvatarModalOpen} onClose={() => setIsAvatarModalOpen(false)} title="Change Profile Avatar">
+        <div className="space-y-5">
+          {/* Current / Selected Preview */}
+          <div className="text-center space-y-2">
+            <div className="w-24 h-24 mx-auto rounded-full overflow-hidden border-2 border-[#EE673A] bg-sunken flex items-center justify-center shadow-lg">
+              <Avatar initials={user?.username.slice(0, 2)} src={avatarInputUrl || user?.avatar} size="xl" />
+            </div>
+            <p className="text-xs text-text-tertiary">Select a preset or upload/paste a custom photo</p>
+          </div>
+
+          {/* Preset Grid */}
+          <div>
+            <label className="text-xs font-semibold text-text-tertiary uppercase block mb-2">Preset Avatars</label>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                `https://api.dicebear.com/7.x/bottts/svg?seed=${user?.username || 'user'}1`,
+                `https://api.dicebear.com/7.x/bottts/svg?seed=${user?.username || 'user'}2`,
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || 'user'}1`,
+                `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username || 'user'}2`,
+                `https://api.dicebear.com/7.x/lorelei/svg?seed=${user?.username || 'user'}`,
+                `https://api.dicebear.com/7.x/pixel-art/svg?seed=${user?.username || 'user'}`,
+                `https://api.dicebear.com/7.x/micah/svg?seed=${user?.username || 'user'}`,
+                `https://api.dicebear.com/7.x/identicon/svg?seed=${user?.username || 'user'}`,
+              ].map((url, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setAvatarInputUrl(url)}
+                  className={`p-1.5 rounded-2xl border transition-all ${
+                    avatarInputUrl === url ? 'border-[#EE673A] bg-[#EE673A]/10 scale-105' : 'border-subtle hover:bg-sunken'
+                  }`}
+                >
+                  <img src={url} alt={`Preset ${i}`} className="w-12 h-12 rounded-full mx-auto" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom Upload or URL */}
+          <div className="space-y-3">
+            <label className="text-xs font-semibold text-text-tertiary uppercase block">Upload Photo or Enter Image URL</label>
+
+            <label className="cursor-pointer p-3 rounded-2xl bg-sunken border border-dashed border-subtle hover:border-[#EE673A] text-center text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center justify-center gap-2">
+              <Camera className="w-4 h-4 text-[#EE673A]" />
+              <span>Choose Photo from Device</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      if (typeof reader.result === 'string') {
+                        setAvatarInputUrl(reader.result);
+                      }
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </label>
+
+            <Input
+              placeholder="Or paste avatar URL (https://...)"
+              value={avatarInputUrl}
+              onChange={(e) => setAvatarInputUrl(e.target.value)}
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setIsAvatarModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={() => handleSaveAvatar()} disabled={updatingAvatar}>
+              {updatingAvatar ? 'Saving...' : 'Save Avatar'}
+            </Button>
           </div>
         </div>
       </Modal>
