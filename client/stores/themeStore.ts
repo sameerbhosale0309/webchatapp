@@ -11,6 +11,7 @@ interface ThemeState {
 function applyThemeToDom(theme: Theme) {
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.classList.toggle('dark', theme === 'dark');
     localStorage.setItem('chat-theme', theme);
   }
 }

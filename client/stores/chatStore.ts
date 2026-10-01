@@ -233,17 +233,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!activeId) return;
 
     const res = await api.delete(`/messages/${messageId}`);
-    const deletedMsg: Message = res.data;
+    const deletedMsg: Message = res.data?.data || res.data;
 
     set((state) => {
       const currentMsgs = state.messages[activeId] || [];
+      const updatedMsgs = currentMsgs.map((m) => (m._id === messageId ? deletedMsg : m));
+      const updatedConvs = state.conversations.map((c) => {
+        if (c._id === activeId && c.lastMessage?._id === messageId) {
+          return { ...c, lastMessage: deletedMsg };
+        }
+        return c;
+      });
+
       return {
         messages: {
           ...state.messages,
-          [activeId]: currentMsgs.map((m) => (m._id === messageId ? deletedMsg : m)),
+          [activeId]: updatedMsgs,
         },
+        conversations: updatedConvs,
       };
     });
+
+    const socket = useSocketStore.getState().socket;
+    if (socket) {
+      socket.emit('message:delete', {
+        conversationId: activeId,
+        message: deletedMsg,
+      });
+    }
   },
 
   addMessage: (message: Message) => {

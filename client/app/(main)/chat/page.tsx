@@ -22,6 +22,7 @@ import {
   Phone,
   Video,
   Info,
+  Ban,
   Send,
   Paperclip,
   Smile,
@@ -191,7 +192,8 @@ export default function ChatPage() {
     setLoadingStories(true);
     try {
       const res = await api.get('/stories');
-      setStoriesGroups(res.data);
+      const groups = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      setStoriesGroups(groups);
     } catch (err) {
       // ignore
     } finally {
@@ -204,7 +206,8 @@ export default function ChatPage() {
     setLoadingCalls(true);
     try {
       const res = await api.get('/calls');
-      setCallLogs(res.data);
+      const logs = Array.isArray(res) ? res : Array.isArray(res?.data) ? res.data : [];
+      setCallLogs(logs);
     } catch (err) {
       // ignore
     } finally {
@@ -336,21 +339,21 @@ export default function ChatPage() {
   const handlePostStory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!storyImageUrl && !storyCaption) {
-      showToast({ title: 'Please provide an image URL or caption', variant: 'error' });
+      showToast({ title: 'Please select a photo or enter a caption', variant: 'error' });
       return;
     }
     try {
       await api.post('/stories', {
         mediaUrl: storyImageUrl,
-        mediaType: storyInputType,
+        mediaType: storyImageUrl ? 'image' : 'text',
         caption: storyCaption,
         bgGradient: storyBgGradient,
       });
-      showToast({ title: 'Story posted!', variant: 'success' });
+      showToast({ title: 'Story posted successfully!', variant: 'success' });
       setIsPostStoryModalOpen(false);
       setStoryImageUrl('');
       setStoryCaption('');
-      fetchStories();
+      await fetchStories();
     } catch (err: any) {
       showToast({ title: 'Failed to post story', description: err.message, variant: 'error' });
     }
@@ -588,49 +591,49 @@ export default function ChatPage() {
 
   if (!initialized || !user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#120F0E]">
+      <div className="flex h-screen items-center justify-center bg-canvas">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#EE673A] border-t-transparent" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-full max-w-full bg-[#120F0E] text-[#F9F6F3] overflow-hidden font-sans antialiased selection:bg-[#EE673A]/30">
+    <div className="flex h-screen w-full max-w-full bg-canvas text-text-primary overflow-hidden font-sans antialiased selection:bg-[#EE673A]/30">
       
       {/* ========================================================================= */}
       {/* 1. LEFT CONVERSATIONS & TABS PANEL */}
       {/* ========================================================================= */}
       <div
-        className={`w-full md:w-96 flex-shrink-0 bg-[#1A1514] border-r border-white/5 flex flex-col h-full relative z-20 transition-all ${
+        className={`w-full md:w-96 flex-shrink-0 bg-surface border-r border-subtle flex flex-col h-full relative z-20 transition-all ${
           mobileView === 'list' ? 'flex' : 'hidden md:flex'
         }`}
       >
         {/* Top Header */}
         <div className="p-4 flex items-center justify-between">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-white capitalize">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-text-primary capitalize">
             {activeTab}
           </h1>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setIsNewChatModalOpen(true)}
-              className="p-2 rounded-full bg-[#292120] text-white/80 hover:text-white hover:bg-[#352A28] transition-colors"
+              className="p-2 rounded-full bg-sunken text-text-secondary hover:text-text-primary hover:bg-sunken/80 transition-colors"
               title="Search Users"
             >
               <Search className="w-5 h-5" />
             </button>
             <button
               onClick={() => setIsPostStoryModalOpen(true)}
-              className="p-2 rounded-full bg-[#292120] text-white/80 hover:text-white hover:bg-[#352A28] transition-colors"
+              className="p-2 rounded-full bg-sunken text-text-secondary hover:text-text-primary hover:bg-sunken/80 transition-colors"
               title="Post Story"
             >
               <Camera className="w-5 h-5" />
             </button>
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-full bg-[#292120] text-white/80 hover:text-white hover:bg-[#352A28] transition-colors"
+              className="p-2 rounded-full bg-sunken text-text-secondary hover:text-text-primary hover:bg-sunken/80 transition-colors"
               title="Toggle Theme"
             >
-              {theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-300" />}
+              {theme === 'dark' ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-indigo-500" />}
             </button>
           </div>
         </div>
@@ -645,9 +648,9 @@ export default function ChatPage() {
                 onClick={() => setIsPostStoryModalOpen(true)}
                 className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group"
               >
-                <div className="relative w-14 h-14 rounded-2xl bg-[#292120] border border-white/10 flex items-center justify-center group-hover:border-[#EE673A] transition-colors">
+                <div className="relative w-14 h-14 rounded-2xl bg-sunken border border-subtle flex items-center justify-center group-hover:border-[#EE673A] transition-colors">
                   <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="md" />
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#EE673A] flex items-center justify-center text-white text-xs font-bold border-2 border-[#1A1514]">
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#EE673A] flex items-center justify-center text-white text-xs font-bold border-2 border-surface">
                     +
                   </div>
                 </div>
@@ -661,8 +664,8 @@ export default function ChatPage() {
                   onClick={() => openStoryViewer(group)}
                   className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group"
                 >
-                  <div className={group.hasUnviewed ? 'story-ring' : 'p-0.5 rounded-full border border-white/20 opacity-60'}>
-                    <div className="w-13 h-13 rounded-full overflow-hidden p-0.5 bg-[#1A1514]">
+                  <div className={group.hasUnviewed ? 'story-ring' : 'p-0.5 rounded-full border border-subtle opacity-70'}>
+                    <div className="w-13 h-13 rounded-full overflow-hidden p-0.5 bg-surface">
                       <Avatar initials={group.user.username.slice(0, 2)} src={group.user.avatar} size="md" />
                     </div>
                   </div>
@@ -682,7 +685,7 @@ export default function ChatPage() {
                   className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
                     filterCategory === cat
                       ? 'bg-[#EE673A] text-white shadow-lg shadow-[#EE673A]/25'
-                      : 'bg-[#28201E] text-text-secondary hover:text-white hover:bg-[#332826]'
+                      : 'bg-sunken text-text-secondary hover:text-text-primary hover:bg-sunken/80'
                   }`}
                 >
                   {cat}
@@ -699,13 +702,13 @@ export default function ChatPage() {
                   placeholder="Search conversations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-2xl bg-[#241D1C] pl-10 pr-4 py-2 text-xs text-text-primary placeholder:text-text-tertiary border border-white/5 focus:outline-none focus:border-[#EE673A] transition-colors"
+                  className="w-full rounded-2xl bg-sunken pl-10 pr-4 py-2 text-xs text-text-primary placeholder:text-text-tertiary border border-subtle focus:outline-none focus:border-[#EE673A] transition-colors"
                 />
               </div>
             </div>
 
             {/* Conversation Items Feed */}
-            <div className="flex-1 overflow-y-auto divide-y divide-white/5 custom-scrollbar px-2 mt-2">
+            <div className="flex-1 overflow-y-auto divide-y divide-subtle custom-scrollbar px-2 mt-2">
               {loadingConversations ? (
                 <div className="p-6 text-center text-xs text-text-tertiary">Loading conversations...</div>
               ) : filteredConversations.length === 0 ? (
@@ -730,20 +733,20 @@ export default function ChatPage() {
                       }}
                       className={`w-full p-3 my-1 rounded-2xl flex items-center gap-3.5 text-left transition-all ${
                         isSelected
-                          ? 'bg-[#2A211F] border border-white/10 shadow-md'
-                          : 'hover:bg-[#231B1A]'
+                          ? 'bg-sunken border border-subtle shadow-md'
+                          : 'hover:bg-sunken/50'
                       }`}
                     >
                       <div className="relative">
                         <Avatar initials={details.name.slice(0, 2)} src={details.avatar} size="md" />
                         {details.isOnline && (
-                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#EE673A] border-2 border-[#1A1514]" />
+                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#EE673A] border-2 border-surface" />
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h3 className="font-semibold text-xs text-white truncate">{details.name}</h3>
+                          <h3 className="font-semibold text-xs text-text-primary truncate">{details.name}</h3>
                           {conv.updatedAt && (
                             <span className="text-[10px] text-text-tertiary flex-shrink-0">
                               {new Date(conv.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -764,7 +767,14 @@ export default function ChatPage() {
                                     <Check className="w-3.5 h-3.5 text-text-tertiary inline shrink-0" />
                                   )
                                 )}
-                                <span className="truncate">{conv.lastMessage?.content || 'No messages yet'}</span>
+                                {conv.lastMessage?.isDeleted || conv.lastMessage?.content === 'This message was deleted' ? (
+                                  <span className="truncate italic text-text-tertiary inline-flex items-center gap-1">
+                                    <Ban className="w-3 h-3 inline shrink-0 opacity-70" />
+                                    This message was deleted
+                                  </span>
+                                ) : (
+                                  <span className="truncate">{conv.lastMessage?.content || 'No messages yet'}</span>
+                                )}
                               </>
                             )}
                           </p>
@@ -801,12 +811,12 @@ export default function ChatPage() {
                 return (
                   <div
                     key={log._id}
-                    className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 flex items-center justify-between hover:bg-[#2A211F] transition-colors"
+                    className="p-3 rounded-2xl bg-sunken border border-subtle flex items-center justify-between hover:bg-surface transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       <Avatar initials={(peer?.username || 'U').slice(0, 2)} src={peer?.avatar} size="md" />
                       <div>
-                        <h4 className="font-semibold text-xs text-white">{peer?.username}</h4>
+                        <h4 className="font-semibold text-xs text-text-primary">{peer?.username}</h4>
                         <div className="flex items-center gap-1.5 text-[11px] text-text-tertiary mt-0.5">
                           {log.status === 'missed' ? (
                             <PhoneMissed className="w-3.5 h-3.5 text-red-400" />
@@ -847,7 +857,7 @@ export default function ChatPage() {
                   +
                 </div>
                 <div>
-                  <h3 className="font-bold text-xs text-white">Post Status Update</h3>
+                  <h3 className="font-bold text-xs text-text-primary">Post Status Update</h3>
                   <p className="text-[11px] text-text-tertiary">Share a photo or message for 24 hours</p>
                 </div>
               </div>
@@ -868,16 +878,16 @@ export default function ChatPage() {
                 <div
                   key={group.user._id}
                   onClick={() => openStoryViewer(group)}
-                  className="p-3.5 rounded-2xl bg-[#241D1C] border border-white/5 flex items-center justify-between cursor-pointer hover:bg-[#2A211F] transition-colors"
+                  className="p-3.5 rounded-2xl bg-sunken border border-subtle flex items-center justify-between cursor-pointer hover:bg-surface transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={group.hasUnviewed ? 'story-ring' : 'p-0.5 rounded-full border border-white/20 opacity-60'}>
-                      <div className="w-11 h-11 rounded-full overflow-hidden p-0.5 bg-[#1A1514]">
+                    <div className={group.hasUnviewed ? 'story-ring' : 'p-0.5 rounded-full border border-subtle opacity-60'}>
+                      <div className="w-11 h-11 rounded-full overflow-hidden p-0.5 bg-surface">
                         <Avatar initials={group.user.username.slice(0, 2)} src={group.user.avatar} size="md" />
                       </div>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-xs text-white">{group.user.username}</h4>
+                      <h4 className="font-semibold text-xs text-text-primary">{group.user.username}</h4>
                       <p className="text-[11px] text-text-tertiary">{group.stories.length} story updates</p>
                     </div>
                   </div>
@@ -894,11 +904,11 @@ export default function ChatPage() {
             <div className="text-center space-y-3">
               <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="xl" className="mx-auto border-2 border-[#EE673A]" />
               <div>
-                <h3 className="font-display font-bold text-lg text-white">{user.username}</h3>
+                <h3 className="font-display font-bold text-lg text-text-primary">{user.username}</h3>
                 <p className="text-xs text-text-tertiary">{user.email}</p>
               </div>
 
-              <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-left space-y-2">
+              <div className="p-3 rounded-2xl bg-sunken border border-subtle text-left space-y-2">
                 <div className="flex items-center justify-between text-xs text-text-tertiary">
                   <span>Bio / Status</span>
                   {!editingBio ? (
@@ -912,30 +922,30 @@ export default function ChatPage() {
                   )}
                 </div>
                 {!editingBio ? (
-                  <p className="text-xs text-white">{user.bio || 'No bio set'}</p>
+                  <p className="text-xs text-text-primary">{user.bio || 'No bio set'}</p>
                 ) : (
                   <input
                     type="text"
                     value={bioInput}
                     onChange={(e) => setBioInput(e.target.value)}
-                    className="w-full bg-[#1A1514] px-3 py-1.5 text-xs text-white rounded-xl border border-[#EE673A] focus:outline-none"
+                    className="w-full bg-surface px-3 py-1.5 text-xs text-text-primary rounded-xl border border-[#EE673A] focus:outline-none"
                   />
                 )}
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-center">
+              <div className="p-3 rounded-2xl bg-sunken border border-subtle text-center">
                 <span className="text-[10px] text-text-tertiary block">Chats</span>
-                <span className="font-bold text-xs text-white">{conversations.length}</span>
+                <span className="font-bold text-xs text-text-primary">{conversations.length}</span>
               </div>
-              <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-center">
+              <div className="p-3 rounded-2xl bg-sunken border border-subtle text-center">
                 <span className="text-[10px] text-text-tertiary block">Calls</span>
-                <span className="font-bold text-xs text-white">{callLogs.length}</span>
+                <span className="font-bold text-xs text-text-primary">{callLogs.length}</span>
               </div>
-              <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-center">
+              <div className="p-3 rounded-2xl bg-sunken border border-subtle text-center">
                 <span className="text-[10px] text-text-tertiary block">Stories</span>
-                <span className="font-bold text-xs text-white">{storiesGroups.length}</span>
+                <span className="font-bold text-xs text-text-primary">{storiesGroups.length}</span>
               </div>
             </div>
 
@@ -951,12 +961,12 @@ export default function ChatPage() {
         )}
 
         {/* Floating Bottom Navigation Bar */}
-        <div className="p-3 bg-[#1A1514]/90 backdrop-blur-md border-t border-white/5 flex items-center justify-between relative">
+        <div className="p-3 bg-surface/90 backdrop-blur-md border-t border-subtle flex items-center justify-between relative">
           <div className="flex-1 flex items-center justify-around">
             <button
               onClick={() => setActiveTab('chats')}
               className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'chats' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-white'
+                activeTab === 'chats' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
               }`}
             >
               <MessageSquare className="w-5 h-5" />
@@ -965,7 +975,7 @@ export default function ChatPage() {
             <button
               onClick={() => setActiveTab('call')}
               className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'call' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-white'
+                activeTab === 'call' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
               }`}
             >
               <Phone className="w-5 h-5" />
@@ -974,7 +984,7 @@ export default function ChatPage() {
             <button
               onClick={() => setActiveTab('updates')}
               className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'updates' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-white'
+                activeTab === 'updates' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
               }`}
             >
               <Sparkles className="w-5 h-5" />
@@ -983,7 +993,7 @@ export default function ChatPage() {
             <button
               onClick={() => setActiveTab('profile')}
               className={`flex flex-col items-center gap-1 text-xs font-semibold ${
-                activeTab === 'profile' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-white'
+                activeTab === 'profile' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
               }`}
             >
               <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="sm" />
@@ -1005,16 +1015,16 @@ export default function ChatPage() {
       {/* ========================================================================= */}
       {activeConversation ? (
         <main
-          className={`flex-1 flex flex-col h-full bg-gradient-to-b from-[#1C1615] via-[#141010] to-[#0E0C0B] relative z-10 transition-all ${
+          className={`flex-1 flex flex-col h-full bg-canvas relative z-10 transition-all ${
             mobileView === 'chat' ? 'flex' : 'hidden md:flex'
           }`}
         >
           {/* Header */}
-          <header className="p-3.5 border-b border-white/5 bg-[#1C1615]/80 backdrop-blur-xl flex items-center justify-between">
+          <header className="p-3.5 border-b border-subtle bg-surface/90 backdrop-blur-xl flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setMobileView('list')}
-                className="md:hidden p-2 rounded-xl text-text-tertiary hover:text-white hover:bg-white/5"
+                className="md:hidden p-2 rounded-xl text-text-tertiary hover:text-text-primary hover:bg-sunken"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
@@ -1025,7 +1035,7 @@ export default function ChatPage() {
                   <>
                     <Avatar initials={details.name.slice(0, 2)} src={details.avatar} size="md" />
                     <div>
-                      <h2 className="font-display font-bold text-sm text-white">{details.name}</h2>
+                      <h2 className="font-display font-bold text-sm text-text-primary">{details.name}</h2>
                       <p className="text-[11px] text-text-secondary">
                         {activeTypingNames.length > 0 ? (
                           <span className="text-[#EE673A] font-semibold animate-pulse">
@@ -1044,14 +1054,14 @@ export default function ChatPage() {
             <div className="flex items-center gap-1">
               <button
                 onClick={() => startCall('audio')}
-                className="p-2.5 rounded-xl hover:bg-white/5 text-text-secondary hover:text-[#EE673A] transition-colors"
+                className="p-2.5 rounded-xl hover:bg-sunken text-text-secondary hover:text-[#EE673A] transition-colors"
                 title="Voice Call"
               >
                 <Phone className="w-4 h-4" />
               </button>
               <button
                 onClick={() => startCall('video')}
-                className="p-2.5 rounded-xl hover:bg-white/5 text-text-secondary hover:text-[#EE673A] transition-colors"
+                className="p-2.5 rounded-xl hover:bg-sunken text-text-secondary hover:text-[#EE673A] transition-colors"
                 title="Video Call"
               >
                 <Video className="w-4 h-4" />
@@ -1062,7 +1072,7 @@ export default function ChatPage() {
                   setMobileView('profile');
                 }}
                 className={`p-2.5 rounded-xl transition-colors ${
-                  showRightSidebar ? 'bg-[#EE673A]/20 text-[#EE673A]' : 'hover:bg-white/5 text-text-secondary'
+                  showRightSidebar ? 'bg-[#EE673A]/20 text-[#EE673A]' : 'hover:bg-sunken text-text-secondary'
                 }`}
                 title="Info"
               >
@@ -1080,13 +1090,14 @@ export default function ChatPage() {
             ) : currentMessages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center space-y-2 opacity-60">
                 <MessageSquare className="w-12 h-12 text-[#EE673A]" />
-                <h3 className="text-sm font-semibold text-white">No messages yet</h3>
+                <h3 className="text-sm font-semibold text-text-primary">No messages yet</h3>
                 <p className="text-xs text-text-tertiary">Start the real-time conversation!</p>
               </div>
             ) : (
               currentMessages.map((msg) => {
                 const isMe = msg.sender?._id === user._id;
                 const isRead = isMessageReadByRecipient(msg, activeConversation);
+                const isDeletedMsg = msg.isDeleted || msg.content === 'This message was deleted';
 
                 return (
                   <div
@@ -1101,100 +1112,120 @@ export default function ChatPage() {
 
                     <div className="flex items-center gap-2 max-w-[88%] sm:max-w-[75%]">
                       {/* Message Bubble */}
-                      <div
-                        className={`rounded-3xl p-4 text-xs space-y-2 shadow-lg transition-all ${
-                          isMe
-                            ? 'bg-[#2E2321] text-white rounded-br-none border border-white/5'
-                            : 'bg-[#211A18]/90 text-white rounded-bl-none border border-white/5 backdrop-blur-md'
-                        }`}
-                      >
-                        {/* Reply reference */}
-                        {msg.replyTo && (
-                          <div className="rounded-xl bg-black/30 p-2 text-[11px] border-l-2 border-[#EE673A] mb-1">
-                            <span className="font-semibold block text-[10px] text-[#EE673A]">
-                              @{msg.replyTo.sender?.username}
-                            </span>
-                            <p className="truncate opacity-90">{msg.replyTo.content}</p>
-                          </div>
-                        )}
-
-                        {/* Content text */}
-                        <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-
-                        {/* Attachments */}
-                        {msg.attachments && msg.attachments.length > 0 && (
-                          <div className="pt-2 space-y-2">
-                            {msg.attachments.map((att, i) => {
-                              const isAudio =
-                                att.type === 'audio' ||
-                                (att.name && /\.(mp3|wav|ogg|m4a|webm)$/i.test(att.name)) ||
-                                (att.url && att.url.startsWith('data:audio'));
-
-                              return (
-                                <div key={i} className="rounded-2xl overflow-hidden relative">
-                                  {att.type === 'image' ? (
-                                    <div className="relative border border-white/10 rounded-2xl overflow-hidden">
-                                      <img
-                                        src={att.url}
-                                        alt={att.name}
-                                        className="max-h-64 w-full object-cover rounded-2xl"
-                                      />
-                                      <div className="absolute bottom-2 right-2 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md text-[10px] font-semibold flex items-center gap-1.5 text-white">
-                                        <Flame className="w-3.5 h-3.5 text-[#EE673A]" /> 3
-                                        <Heart className="w-3.5 h-3.5 text-red-500 ml-1" /> 2
-                                      </div>
-                                    </div>
-                                  ) : isAudio ? (
-                                    <AudioPlayer src={att.url} name={att.name || 'Voice Note'} isMe={isMe} />
-                                  ) : (
-                                    <a
-                                      href={att.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex items-center gap-2 p-3 bg-black/30 hover:bg-black/40 rounded-xl text-xs border border-white/10"
-                                    >
-                                      <FileText className="w-4 h-4 text-[#EE673A]" />
-                                      <span className="truncate font-medium">{att.name}</span>
-                                    </a>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Timestamp & Read Receipts */}
-                        <div className="flex items-center justify-end gap-1.5 text-[10px] text-text-tertiary pt-1">
-                          <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          {isMe && (
-                            isRead ? (
-                              <CheckCheck className="w-3.5 h-3.5 text-cyan-400" />
-                            ) : (
-                              <Check className="w-3.5 h-3.5 text-text-tertiary" />
-                            )
-                          )}
+                      {isDeletedMsg ? (
+                        <div
+                          className={`rounded-2xl px-3.5 py-2.5 text-xs border flex items-center gap-2 shadow-sm transition-all ${
+                            isMe
+                              ? 'bg-sunken/80 border-subtle text-text-tertiary rounded-br-none'
+                              : 'bg-surface border-subtle text-text-tertiary rounded-bl-none'
+                          }`}
+                        >
+                          <Ban className="w-3.5 h-3.5 text-text-tertiary/70 flex-shrink-0" />
+                          <span className="italic font-normal opacity-85">This message was deleted</span>
+                          <span className="text-[10px] text-text-tertiary/60 ml-2 self-end">
+                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </div>
-                      </div>
+                      ) : (
+                        <div
+                          className={`rounded-3xl p-4 text-xs space-y-2 shadow-md transition-all ${
+                            isMe
+                              ? 'bg-[#EE673A] text-white rounded-br-none border border-[#EE673A]/20 shadow-[#EE673A]/15'
+                              : 'bg-surface text-text-primary rounded-bl-none border border-subtle backdrop-blur-md'
+                          }`}
+                        >
+                          {/* Reply reference */}
+                          {msg.replyTo && (
+                            <div className={`rounded-xl p-2 text-[11px] border-l-2 border-[#EE673A] mb-1 ${
+                              isMe ? 'bg-black/20 text-white' : 'bg-sunken text-text-primary'
+                            }`}>
+                              <span className="font-semibold block text-[10px] text-[#EE673A]">
+                                @{msg.replyTo.sender?.username}
+                              </span>
+                              <p className="truncate opacity-90">{msg.replyTo.content}</p>
+                            </div>
+                          )}
+
+                          {/* Content text */}
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+
+                          {/* Attachments */}
+                          {msg.attachments && msg.attachments.length > 0 && (
+                            <div className="pt-2 space-y-2">
+                              {msg.attachments.map((att, i) => {
+                                const isAudio =
+                                  att.type === 'audio' ||
+                                  (att.name && /\.(mp3|wav|ogg|m4a|webm)$/i.test(att.name)) ||
+                                  (att.url && att.url.startsWith('data:audio'));
+
+                                return (
+                                  <div key={i} className="rounded-2xl overflow-hidden relative">
+                                    {att.type === 'image' ? (
+                                      <div className="relative border border-subtle rounded-2xl overflow-hidden">
+                                        <img
+                                          src={att.url}
+                                          alt={att.name}
+                                          className="max-h-64 w-full object-cover rounded-2xl"
+                                        />
+                                      </div>
+                                    ) : isAudio ? (
+                                      <AudioPlayer src={att.url} name={att.name || 'Voice Note'} isMe={isMe} />
+                                    ) : (
+                                      <a
+                                        href={att.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className={`flex items-center gap-2 p-3 rounded-xl text-xs border ${
+                                          isMe ? 'bg-black/20 border-white/10 text-white' : 'bg-sunken border-subtle text-text-primary'
+                                        }`}
+                                      >
+                                        <FileText className="w-4 h-4 text-[#EE673A]" />
+                                        <span className="truncate font-medium">{att.name}</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* Timestamp & Read Receipts */}
+                          <div className={`flex items-center justify-end gap-1.5 text-[10px] pt-1 ${
+                            isMe ? 'text-white/80' : 'text-text-tertiary'
+                          }`}>
+                            <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            {isMe && (
+                              isRead ? (
+                                <CheckCheck className="w-3.5 h-3.5 text-cyan-200" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5 text-white/70" />
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Action buttons */}
-                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                        <button
-                          onClick={() => setReplyingTo(msg)}
-                          className="p-1.5 rounded-lg hover:bg-white/5 text-text-tertiary hover:text-white"
-                          title="Reply"
-                        >
-                          <Reply className="w-3.5 h-3.5" />
-                        </button>
-                        {isMe && (
+                      {!isDeletedMsg && (
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
                           <button
-                            onClick={() => deleteMessage(msg._id)}
-                            className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-tertiary hover:text-red-400"
-                            title="Delete"
+                            onClick={() => setReplyingTo(msg)}
+                            className="p-1.5 rounded-lg hover:bg-sunken text-text-tertiary hover:text-text-primary"
+                            title="Reply"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Reply className="w-3.5 h-3.5" />
                           </button>
-                        )}
-                      </div>
+                          {isMe && (
+                            <button
+                              onClick={() => deleteMessage(msg._id)}
+                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-tertiary hover:text-red-400"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1205,15 +1236,15 @@ export default function ChatPage() {
 
           {/* Replying Banner */}
           {replyingTo && (
-            <div className="px-4 py-2 bg-[#1C1615] border-t border-white/5 flex items-center justify-between text-xs">
+            <div className="px-4 py-2 bg-surface border-t border-subtle flex items-center justify-between text-xs text-text-primary">
               <div className="flex items-center gap-2">
                 <Reply className="w-4 h-4 text-[#EE673A]" />
                 <span>
-                  Replying to <strong className="text-white">@{replyingTo.sender?.username}</strong>: &quot;
+                  Replying to <strong className="text-text-primary">@{replyingTo.sender?.username}</strong>: &quot;
                   {replyingTo.content}&quot;
                 </span>
               </div>
-              <button onClick={() => setReplyingTo(null)} className="text-text-tertiary hover:text-white">
+              <button onClick={() => setReplyingTo(null)} className="text-text-tertiary hover:text-text-primary">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1221,27 +1252,52 @@ export default function ChatPage() {
 
           {/* Attachment Preview Banner */}
           {attachmentPreview && (
-            <div className="px-4 py-2 bg-[#1C1615] border-t border-white/5 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                {attachmentPreview.type === 'audio' ? (
-                  <Mic className="w-4 h-4 text-[#EE673A]" />
+            <div className="px-4 py-3 bg-surface border-t border-subtle flex items-center justify-between text-xs animate-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-3 min-w-0">
+                {attachmentPreview.type === 'image' ? (
+                  <div className="relative flex-shrink-0 group">
+                    <img
+                      src={attachmentPreview.url}
+                      alt={attachmentPreview.name}
+                      className="w-14 h-14 object-cover rounded-xl border border-subtle shadow-md"
+                    />
+                  </div>
+                ) : attachmentPreview.type === 'audio' ? (
+                  <div className="w-10 h-10 rounded-xl bg-[#EE673A]/20 border border-[#EE673A]/30 flex items-center justify-center flex-shrink-0">
+                    <Mic className="w-5 h-5 text-[#EE673A]" />
+                  </div>
                 ) : (
-                  <Paperclip className="w-4 h-4 text-[#EE673A]" />
+                  <div className="w-10 h-10 rounded-xl bg-sunken border border-subtle flex items-center justify-center flex-shrink-0">
+                    <Paperclip className="w-5 h-5 text-[#EE673A]" />
+                  </div>
                 )}
-                <span className="truncate font-medium">
-                  {attachmentPreview.type === 'audio' ? `Audio: ${attachmentPreview.name}` : attachmentPreview.name}
-                </span>
+
+                <div className="min-w-0">
+                  <span className="font-semibold text-text-primary block truncate max-w-xs">
+                    {attachmentPreview.name}
+                  </span>
+                  <span className="text-[10px] text-text-tertiary block capitalize">
+                    {attachmentPreview.type === 'image' ? 'Photo attachment ready to send' : `${attachmentPreview.type} attachment`}
+                  </span>
+                </div>
               </div>
-              <button onClick={() => setAttachmentPreview(null)} className="text-text-tertiary hover:text-white">
-                <X className="w-4 h-4" />
+
+              {/* Cross (X) delete/cancel button */}
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                className="p-2 rounded-full bg-sunken hover:bg-red-500/20 text-text-tertiary hover:text-red-400 transition-colors ml-3"
+                title="Remove attachment"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
           )}
 
           {/* Input Bar */}
-          <footer className="p-3 bg-[#1A1514]/90 backdrop-blur-xl border-t border-white/5">
+          <footer className="p-3 bg-surface/90 backdrop-blur-xl border-t border-subtle">
             {isRecordingVoice ? (
-              <div className="flex items-center justify-between bg-[#292120] border border-red-500/30 rounded-full px-4 py-2 text-xs text-red-400">
+              <div className="flex items-center justify-between bg-sunken border border-red-500/30 rounded-full px-4 py-2 text-xs text-red-400">
                 <div className="flex items-center gap-3">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
                   <span>Recording voice message... ({recordingTime}s)</span>
@@ -1264,18 +1320,18 @@ export default function ChatPage() {
                   className="hidden"
                 />
 
-                <div className="flex-1 flex items-center bg-[#251E1C] rounded-full px-4 py-1.5 border border-white/5 focus-within:border-[#EE673A] transition-colors">
+                <div className="flex-1 flex items-center bg-sunken rounded-full px-4 py-1.5 border border-subtle focus-within:border-[#EE673A] transition-colors">
                   <input
                     type="text"
                     placeholder="Type here..."
                     value={messageInput}
                     onChange={handleInputChange}
-                    className="w-full bg-transparent text-xs text-white placeholder:text-text-tertiary focus:outline-none py-1.5"
+                    className="w-full bg-transparent text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none py-1.5"
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 text-text-tertiary hover:text-white transition-colors"
+                    className="p-1.5 text-text-tertiary hover:text-text-primary transition-colors"
                   >
                     <Camera className="w-4 h-4" />
                   </button>
@@ -1284,7 +1340,7 @@ export default function ChatPage() {
                 <button
                   type="button"
                   onClick={startRecordingVoice}
-                  className="p-3 rounded-full bg-[#251E1C] text-text-tertiary hover:text-white hover:bg-[#332826] transition-colors"
+                  className="p-3 rounded-full bg-sunken text-text-tertiary hover:text-text-primary hover:bg-sunken/80 transition-colors"
                 >
                   <Mic className="w-4 h-4" />
                 </button>
@@ -1301,11 +1357,11 @@ export default function ChatPage() {
         </main>
       ) : (
         /* Empty state */
-        <main className="hidden md:flex flex-1 flex-col items-center justify-center bg-[#120F0E] text-center p-8 space-y-4">
+        <main className="hidden md:flex flex-1 flex-col items-center justify-center bg-canvas text-center p-8 space-y-4">
           <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-[#EE673A] to-[#FF8A64] flex items-center justify-center shadow-2xl shadow-[#EE673A]/20">
             <MessageSquare className="w-10 h-10 text-white" />
           </div>
-          <h2 className="font-display font-bold text-2xl text-white">Select a Chat to Start Messaging</h2>
+          <h2 className="font-display font-bold text-2xl text-text-primary">Select a Chat to Start Messaging</h2>
           <p className="text-xs text-text-secondary max-w-sm">
             Choose a conversation from the sidebar or click (+) to start a new chat with real-time updates.
           </p>
@@ -1316,20 +1372,20 @@ export default function ChatPage() {
       {/* 3. RIGHT PROFILE SIDEBAR */}
       {/* ========================================================================= */}
       {(showRightSidebar || mobileView === 'profile') && (
-        <aside className="w-full md:w-80 flex-shrink-0 bg-[#161211] border-l border-white/5 p-5 flex flex-col h-full z-30 space-y-6 overflow-y-auto custom-scrollbar">
+        <aside className="w-full md:w-80 flex-shrink-0 bg-surface border-l border-subtle p-5 flex flex-col h-full z-30 space-y-6 overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
             <button
               onClick={() => {
                 setShowRightSidebar(false);
                 setMobileView('list');
               }}
-              className="p-1 text-text-tertiary hover:text-white"
+              className="p-1 text-text-tertiary hover:text-text-primary"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
             <button
               onClick={logout}
-              className="p-2 rounded-full bg-[#251E1C] text-red-400 hover:bg-red-500/10"
+              className="p-2 rounded-full bg-sunken text-red-400 hover:bg-red-500/10"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
@@ -1345,9 +1401,9 @@ export default function ChatPage() {
                 size="xl"
                 className="mx-auto border-2 border-[#EE673A]"
               />
-              <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-[#EE673A] border-2 border-[#161211]" />
+              <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-[#EE673A] border-2 border-surface" />
             </div>
-            <h3 className="font-display font-bold text-lg text-white">
+            <h3 className="font-display font-bold text-lg text-text-primary">
               {activeConversation ? getConversationDetails(activeConversation).name : user.username}
             </h3>
             <p className="text-xs text-text-tertiary">
@@ -1357,24 +1413,24 @@ export default function ChatPage() {
 
           {/* Dynamic Stats Grid */}
           <div className="grid grid-cols-3 gap-2">
-            <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-center">
+            <div className="p-3 rounded-2xl bg-sunken border border-subtle text-center">
               <span className="text-[10px] text-text-tertiary block">Messages</span>
-              <span className="font-bold text-xs text-white">{currentMessages.length || conversations.length * 15}</span>
+              <span className="font-bold text-xs text-text-primary">{currentMessages.length || conversations.length * 15}</span>
             </div>
-            <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-center">
+            <div className="p-3 rounded-2xl bg-sunken border border-subtle text-center">
               <span className="text-[10px] text-text-tertiary block">Group</span>
-              <span className="font-bold text-xs text-white">{conversations.filter(c => c.type === 'group').length}</span>
+              <span className="font-bold text-xs text-text-primary">{conversations.filter(c => c.type === 'group').length}</span>
             </div>
-            <div className="p-3 rounded-2xl bg-[#241D1C] border border-white/5 text-center">
+            <div className="p-3 rounded-2xl bg-sunken border border-subtle text-center">
               <span className="text-[10px] text-text-tertiary block">Media</span>
-              <span className="font-bold text-xs text-white">{realMediaItems.length}</span>
+              <span className="font-bold text-xs text-text-primary">{realMediaItems.length}</span>
             </div>
           </div>
 
           {/* Dynamic Media Preview */}
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-white">Media and photos</span>
+              <span className="font-semibold text-text-primary">Media and photos</span>
               <span className="text-[10px] text-text-tertiary">{realMediaItems.length} files</span>
             </div>
             {realMediaItems.length > 0 ? (
@@ -1384,12 +1440,12 @@ export default function ChatPage() {
                     key={i}
                     src={item.url}
                     alt={item.name}
-                    className="h-16 w-full object-cover rounded-xl border border-white/10"
+                    className="h-16 w-full object-cover rounded-xl border border-subtle"
                   />
                 ))}
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-[#241D1C] text-center text-xs text-text-tertiary">
+              <div className="p-4 rounded-xl bg-sunken text-center text-xs text-text-tertiary">
                 No media shared in this chat
               </div>
             )}
@@ -1397,31 +1453,31 @@ export default function ChatPage() {
 
           {/* Menu Items */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#241D1C] border border-white/5 hover:bg-[#2A2220] transition-colors cursor-pointer">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-sunken border border-subtle hover:bg-surface transition-colors cursor-pointer">
               <div className="flex items-center gap-3">
                 <Bell className="w-4 h-4 text-text-tertiary" />
-                <span className="text-xs font-semibold text-white">Notification</span>
+                <span className="text-xs font-semibold text-text-primary">Notification</span>
               </div>
               <ChevronLeft className="w-4 h-4 rotate-180 text-text-tertiary" />
             </div>
 
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#241D1C] border border-white/5 hover:bg-[#2A2220] transition-colors cursor-pointer">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-sunken border border-subtle hover:bg-surface transition-colors cursor-pointer">
               <div className="flex items-center gap-3">
                 <Eye className="w-4 h-4 text-text-tertiary" />
-                <span className="text-xs font-semibold text-white">Media visibility</span>
+                <span className="text-xs font-semibold text-text-primary">Media visibility</span>
               </div>
               <ChevronLeft className="w-4 h-4 rotate-180 text-text-tertiary" />
             </div>
 
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-[#241D1C] border border-white/5">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-sunken border border-subtle">
               <div className="flex items-center gap-3">
                 <Lock className="w-4 h-4 text-text-tertiary" />
-                <span className="text-xs font-semibold text-white">Lock Chat</span>
+                <span className="text-xs font-semibold text-text-primary">Lock Chat</span>
               </div>
               <button
                 onClick={() => setLockChat(!lockChat)}
                 className={`w-10 h-5 rounded-full p-0.5 transition-colors ${
-                  lockChat ? 'bg-[#EE673A]' : 'bg-[#352A28]'
+                  lockChat ? 'bg-[#EE673A]' : 'bg-surface border border-subtle'
                 }`}
               >
                 <div
@@ -1445,7 +1501,7 @@ export default function ChatPage() {
               className={`flex-1 py-2 text-xs font-bold rounded-xl border ${
                 storyInputType === 'image'
                   ? 'bg-[#EE673A] text-white border-[#EE673A]'
-                  : 'bg-[#241D1C] text-text-tertiary border-white/5'
+                  : 'bg-sunken text-text-tertiary border-subtle'
               }`}
             >
               Photo Story
@@ -1456,7 +1512,7 @@ export default function ChatPage() {
               className={`flex-1 py-2 text-xs font-bold rounded-xl border ${
                 storyInputType === 'text'
                   ? 'bg-[#EE673A] text-white border-[#EE673A]'
-                  : 'bg-[#241D1C] text-text-tertiary border-white/5'
+                  : 'bg-sunken text-text-tertiary border-subtle'
               }`}
             >
               Text Story
@@ -1464,12 +1520,61 @@ export default function ChatPage() {
           </div>
 
           {storyInputType === 'image' ? (
-            <Input
-              label="Image URL"
-              placeholder="https://images.unsplash.com/..."
-              value={storyImageUrl}
-              onChange={(e) => setStoryImageUrl(e.target.value)}
-            />
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-text-tertiary uppercase">Select Photo or Enter Image URL</label>
+
+              <div className="flex items-center gap-2">
+                <label className="flex-1 cursor-pointer p-3 rounded-2xl bg-sunken border border-dashed border-subtle hover:border-[#EE673A] text-center text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center justify-center gap-2">
+                  <Camera className="w-4 h-4 text-[#EE673A]" />
+                  <span>Choose Photo File</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setStoryImageUrl(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div className="relative flex items-center justify-center my-1">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-subtle" />
+                </div>
+                <span className="relative bg-surface px-2 text-[10px] text-text-tertiary uppercase">or paste image URL</span>
+              </div>
+
+              <Input
+                placeholder="https://images.unsplash.com/..."
+                value={storyImageUrl}
+                onChange={(e) => setStoryImageUrl(e.target.value)}
+              />
+
+              {storyImageUrl && (
+                <div className="relative rounded-2xl overflow-hidden border border-white/10 max-h-40 bg-black/40 flex items-center justify-center p-2">
+                  <img
+                    src={storyImageUrl}
+                    alt="Story Preview"
+                    className="max-h-36 object-contain rounded-xl"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setStoryImageUrl('')}
+                    className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-red-500"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-2">
               <label className="text-xs font-semibold text-text-tertiary uppercase">Background Style</label>
@@ -1549,7 +1654,7 @@ export default function ChatPage() {
                 <img
                   src={activeStoryGroup.stories[activeStoryIndex].mediaUrl}
                   alt="Story"
-                  className="max-h-96 w-full object-cover rounded-2xl shadow-xl border border-white/10"
+                  className="max-h-96 w-full object-contain rounded-2xl shadow-xl border border-white/10"
                 />
               )}
               {activeStoryGroup.stories[activeStoryIndex]?.caption && (
@@ -1563,7 +1668,7 @@ export default function ChatPage() {
             <div className="flex items-center justify-between text-xs text-white/80 pt-2 border-t border-white/10 relative z-20">
               <div className="flex items-center gap-1.5">
                 <Eye className="w-4 h-4 text-cyan-300" />
-                <span>{activeStoryGroup.stories[activeStoryIndex]?.views?.length || 1} views</span>
+                <span>{activeStoryGroup.stories[activeStoryIndex]?.views?.length || 0} views</span>
               </div>
               <span className="text-[10px] opacity-70">Tap right for next</span>
             </div>
@@ -1584,12 +1689,12 @@ export default function ChatPage() {
               <button
                 key={u._id}
                 onClick={() => handleStartDirectChat(u._id)}
-                className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-[#251E1C] transition-colors border border-white/5 text-left"
+                className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-sunken transition-colors border border-subtle text-left"
               >
                 <div className="flex items-center gap-3">
                   <Avatar initials={u.username.slice(0, 2)} src={u.avatar} size="sm" />
                   <div>
-                    <div className="text-xs font-bold text-white">{u.username}</div>
+                    <div className="text-xs font-bold text-text-primary">{u.username}</div>
                     <div className="text-[10px] text-text-tertiary">{u.email}</div>
                   </div>
                 </div>
@@ -1630,12 +1735,12 @@ export default function ChatPage() {
                     className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-colors ${
                       isSelected
                         ? 'border-[#EE673A] bg-[#EE673A]/10'
-                        : 'border-white/5 hover:bg-[#251E1C]'
+                        : 'border-subtle hover:bg-sunken'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <Avatar initials={other.username.slice(0, 2)} src={other.avatar} size="sm" />
-                      <span className="text-xs font-semibold text-white">{other.username}</span>
+                      <span className="text-xs font-semibold text-text-primary">{other.username}</span>
                     </div>
                     {isSelected && <Check className="w-4 h-4 text-[#EE673A]" />}
                   </button>

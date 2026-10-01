@@ -113,6 +113,14 @@ export function setupSocketIO(io) {
       });
     });
 
+    // Message delete real-time event
+    socket.on('message:delete', ({ conversationId, message }) => {
+      io.to(`conversation:${conversationId}`).emit('message:deleted', {
+        conversationId,
+        message,
+      });
+    });
+
     // WebRTC Calling Signaling
     socket.on('call:invite', ({ targetUserId, conversationId, callType, offer }) => {
       io.to(`user:${targetUserId}`).emit('call:incoming', {

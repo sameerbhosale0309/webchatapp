@@ -12,10 +12,10 @@ export async function createStory(req, res) {
     const story = await Story.create({
       user: req.userId,
       mediaUrl: mediaUrl || '',
-      mediaType,
+      mediaType: mediaUrl ? 'image' : mediaType,
       caption: caption || '',
       bgGradient: bgGradient || 'linear-gradient(135deg, #EE673A, #FF8A64)',
-      views: [req.userId],
+      views: [], // Creator view is excluded from initial view count
     });
 
     const populated = await Story.findById(story._id).populate('user', 'username avatar email');
@@ -46,10 +46,13 @@ export async function getStories(req, res) {
         });
       }
       const group = userStoriesMap.get(uId);
-      const isViewedByMe = story.views.some((v) => (v._id ? v._id.toString() : v.toString()) === req.userId);
-      if (!isViewedByMe) {
+      const isOwner = uId === req.userId.toString();
+      const isViewedByMe = isOwner || story.views.some((v) => (v._id ? v._id.toString() : v.toString()) === req.userId);
+      
+      if (!isViewedByMe && !isOwner) {
         group.hasUnviewed = true;
       }
+
       group.stories.push({
         ...story.toJSON(),
         isViewed: isViewedByMe,
@@ -72,9 +75,18 @@ export async function viewStory(req, res) {
       return res.status(404).json({ success: false, message: 'Story not found or expired' });
     }
 
-    if (!story.views.includes(req.userId)) {
-      story.views.push(req.userId);
-      await story.save();
+    const storyOwnerId = story.user.toString();
+    const currentUserId = req.userId.toString();
+
+    // Only increment view count if viewer is a DIFFERENT user (not the story creator)
+    if (storyOwnerId !== currentUserId) {
+      const alreadyViewed = story.views.some(
+        (v) => (v._id ? v._id.toString() : v.toString()) === currentUserId
+      );
+      if (!alreadyViewed) {
+        story.views.push(req.userId);
+        await story.save();
+      }
     }
 
     return res.status(200).json({ success: true, message: 'Story viewed' });

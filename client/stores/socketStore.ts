@@ -114,6 +114,25 @@ export const useSocketStore = create<SocketState>((set, get) => ({
       }));
     });
 
+    newSocket.on('message:deleted', ({ conversationId, message }: { conversationId: string; message: Message }) => {
+      console.log('🗑️ Real-time message deleted:', message._id);
+      const chatStore = useChatStore.getState();
+      const currentMsgs = chatStore.messages[conversationId] || [];
+      const updated = currentMsgs.map((m) => (m._id === message._id ? message : m));
+      
+      const updatedConvs = chatStore.conversations.map((c) => {
+        if (c._id === conversationId && c.lastMessage?._id === message._id) {
+          return { ...c, lastMessage: message };
+        }
+        return c;
+      });
+
+      useChatStore.setState((state) => ({
+        messages: { ...state.messages, [conversationId]: updated },
+        conversations: updatedConvs,
+      }));
+    });
+
     // Real-Time Read Receipt listener
     newSocket.on('message:read_update', ({ conversationId, userId }: { conversationId: string; userId: string }) => {
       console.log('👁️ Real-time read receipt update:', conversationId, userId);
