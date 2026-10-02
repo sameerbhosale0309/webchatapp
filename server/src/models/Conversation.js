@@ -16,6 +16,10 @@ const conversationSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    description: {
+      type: String,
+      default: '',
+    },
     participants: [
       {
         type: mongoose.Schema.Types.ObjectId,

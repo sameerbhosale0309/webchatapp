@@ -42,6 +42,7 @@ export interface Conversation {
   type: 'direct' | 'group';
   name?: string;
   avatar?: string;
+  description?: string;
   participants: Array<{
     _id: string;
     username: string;
@@ -63,19 +64,34 @@ interface ChatState {
   messages: Record<string, Message[]>;
   loadingConversations: boolean;
   loadingMessages: boolean;
+  pinnedConversationIds: string[];
+  favoriteConversationIds: string[];
 
   fetchConversations: () => Promise<void>;
   selectConversation: (id: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   sendMessage: (content: string, attachments?: Attachment[], replyToId?: string) => Promise<void>;
   createDirectConversation: (recipientId: string) => Promise<string>;
-  createGroupConversation: (name: string, participantIds: string[]) => Promise<string>;
+  createGroupConversation: (name: string, participantIds: string[], avatar?: string) => Promise<string>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
   deleteMessage: (messageId: string) => Promise<void>;
   addMessage: (message: Message) => void;
   updateConversationLastMessage: (conversationId: string, message: Message) => void;
   markConversationMessagesRead: (conversationId: string, userId: string) => void;
   updateUserStatus: (userId: string, status: 'online' | 'offline' | 'away', lastSeen?: string) => void;
+  togglePinConversation: (id: string) => void;
+  toggleFavoriteConversation: (id: string) => void;
+  updateGroupProfile: (id: string, data: { name?: string; avatar?: string; description?: string }) => Promise<void>;
+}
+
+function getStoredArray(key: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const data = localStorage.getItem(key);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    return [];
+  }
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -84,6 +100,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: {},
   loadingConversations: false,
   loadingMessages: false,
+  pinnedConversationIds: getStoredArray('chat-pinned-ids'),
+  favoriteConversationIds: getStoredArray('chat-favorite-ids'),
 
   fetchConversations: async () => {
     set({ loadingConversations: true });
@@ -341,6 +359,41 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : p
         ),
       })),
+    }));
+  },
+
+  togglePinConversation: (id: string) => {
+    set((state) => {
+      const current = state.pinnedConversationIds || [];
+      const updated = current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('chat-pinned-ids', JSON.stringify(updated));
+      }
+      return { pinnedConversationIds: updated };
+    });
+  },
+
+  toggleFavoriteConversation: (id: string) => {
+    set((state) => {
+      const current = state.favoriteConversationIds || [];
+      const updated = current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('chat-favorite-ids', JSON.stringify(updated));
+      }
+      return { favoriteConversationIds: updated };
+    });
+  },
+
+  updateGroupProfile: async (id: string, data: { name?: string; avatar?: string; description?: string }) => {
+    const res = await api.patch(`/conversations/${id}`, data);
+    const updatedConv: Conversation = res.data?.data || res.data;
+
+    set((state) => ({
+      conversations: state.conversations.map((c) => (c._id === id ? { ...c, ...updatedConv } : c)),
     }));
   },
 }));

@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { AudioPlayer } from '@/components/ui/AudioPlayer';
+import { TypingIndicator, TypingDots } from '@/components/ui/TypingIndicator';
+import { SwipeableChatItem } from '@/components/ui/SwipeableChatItem';
 
 import {
   MessageSquare,
@@ -49,6 +51,8 @@ import {
   UserPlus,
   Flame,
   Heart,
+  Pin,
+  PinOff,
   PhoneIncoming,
   PhoneOutgoing,
   PhoneMissed,
@@ -109,6 +113,8 @@ export default function ChatPage() {
     messages,
     loadingConversations,
     loadingMessages,
+    pinnedConversationIds,
+    favoriteConversationIds,
     fetchConversations,
     selectConversation,
     sendMessage,
@@ -116,6 +122,9 @@ export default function ChatPage() {
     createGroupConversation,
     toggleReaction,
     deleteMessage,
+    togglePinConversation,
+    toggleFavoriteConversation,
+    updateGroupProfile,
   } = useChatStore();
 
   // Navigation & Tabs
@@ -144,6 +153,7 @@ export default function ChatPage() {
   const [isPostStoryModalOpen, setIsPostStoryModalOpen] = useState(false);
   const [activeStoryGroup, setActiveStoryGroup] = useState<StoryGroup | null>(null);
   const [activeStoryIndex, setActiveStoryIndex] = useState(0);
+  const [isViewersModalOpen, setIsViewersModalOpen] = useState(false);
 
   // Forms
   const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
@@ -158,17 +168,25 @@ export default function ChatPage() {
   const [storyCaption, setStoryCaption] = useState('');
   const [storyBgGradient, setStoryBgGradient] = useState('linear-gradient(135deg, #EE673A, #FF8A64)');
 
-  // Profile Edit
+  // Profile & Group Edit
   const [editingBio, setEditingBio] = useState(false);
   const [bioInput, setBioInput] = useState(user?.bio || '');
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [avatarInputUrl, setAvatarInputUrl] = useState('');
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
 
+  // Group Profile Edit
+  const [isEditGroupModalOpen, setIsEditGroupModalOpen] = useState(false);
+  const [groupEditName, setGroupEditName] = useState('');
+  const [groupEditAvatar, setGroupEditAvatar] = useState('');
+  const [groupEditDescription, setGroupEditDescription] = useState('');
+  const [updatingGroupProfile, setUpdatingGroupProfile] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingTimerRef = useRef<any>(null);
   const storyTimerRef = useRef<any>(null);
+  const typingTimeoutRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -218,15 +236,18 @@ export default function ChatPage() {
     }
   };
 
-  // Scroll to bottom on new message
-  useEffect(() => {
-    if (activeConversationId && messages[activeConversationId]) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [activeConversationId, messages]);
-
   const activeConversation = conversations.find((c) => c._id === activeConversationId);
   const currentMessages = activeConversationId ? messages[activeConversationId] || [] : [];
+  const activeTypingNames = activeConversationId
+    ? (typingUsers[activeConversationId] || []).filter((name) => name !== user?.username)
+    : [];
+
+  // Scroll to bottom on new message or typing indicator
+  useEffect(() => {
+    if (activeConversationId && (messages[activeConversationId] || activeTypingNames.length > 0)) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [activeConversationId, messages, activeTypingNames.length]);
 
   // Check if message is read by recipient
   const isMessageReadByRecipient = (msg?: Message, conv?: Conversation) => {
@@ -272,6 +293,7 @@ export default function ChatPage() {
         name: conv.name || 'Group Chat',
         avatar: conv.avatar || 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=256&q=80',
         statusText: `${conv.participants.length} members`,
+        description: conv.description || '',
         isOnline: false,
       };
     } else {
@@ -281,6 +303,7 @@ export default function ChatPage() {
         name: other?.username || 'User',
         avatar: other?.avatar || '',
         statusText: isOnline ? 'Online' : formatLastSeen(other?.lastSeen),
+        description: other?.bio || '',
         isOnline,
         otherUser: other,
       };
@@ -330,9 +353,10 @@ export default function ChatPage() {
       setIsGroupModalOpen(false);
       setGroupName('');
       setSelectedGroupMembers([]);
+      setFilterCategory('Groups');
       setActiveTab('chats');
       setMobileView('chat');
-      showToast({ title: 'Group created!', variant: 'success' });
+      showToast({ title: `Group "${groupName}" created!`, variant: 'success' });
     } catch (err: any) {
       showToast({ title: 'Group creation failed', description: err.message, variant: 'error' });
     }
@@ -393,11 +417,69 @@ export default function ChatPage() {
     return () => clearTimeout(storyTimerRef.current);
   }, [activeStoryGroup, activeStoryIndex]);
 
+  // Instant zero-delay story navigation handlers
+  const handleNextStory = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!activeStoryGroup) return;
+
+    if (storyTimerRef.current) clearTimeout(storyTimerRef.current);
+
+    if (activeStoryIndex < activeStoryGroup.stories.length - 1) {
+      const nextIdx = activeStoryIndex + 1;
+      setActiveStoryIndex(nextIdx);
+      if (activeStoryGroup.stories[nextIdx]) {
+        api.post(`/stories/${activeStoryGroup.stories[nextIdx]._id}/view`);
+      }
+    } else {
+      // Find next story group in storiesGroups array
+      const currentGroupIdx = storiesGroups.findIndex((g) => g.user._id === activeStoryGroup.user._id);
+      if (currentGroupIdx >= 0 && currentGroupIdx < storiesGroups.length - 1) {
+        const nextGroup = storiesGroups[currentGroupIdx + 1];
+        setActiveStoryGroup(nextGroup);
+        setActiveStoryIndex(0);
+        if (nextGroup.stories[0]) {
+          api.post(`/stories/${nextGroup.stories[0]._id}/view`);
+        }
+      } else {
+        // Reached end of all stories
+        setActiveStoryGroup(null);
+      }
+    }
+  };
+
+  const handlePrevStory = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!activeStoryGroup) return;
+
+    if (storyTimerRef.current) clearTimeout(storyTimerRef.current);
+
+    if (activeStoryIndex > 0) {
+      setActiveStoryIndex(activeStoryIndex - 1);
+    } else {
+      // Move to previous user's story group
+      const currentGroupIdx = storiesGroups.findIndex((g) => g.user._id === activeStoryGroup.user._id);
+      if (currentGroupIdx > 0) {
+        const prevGroup = storiesGroups[currentGroupIdx - 1];
+        setActiveStoryGroup(prevGroup);
+        setActiveStoryIndex(prevGroup.stories.length - 1);
+      }
+    }
+  };
+
   // Message Input Handling
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessageInput(e.target.value);
     if (activeConversationId) {
-      setTyping(activeConversationId, e.target.value.length > 0);
+      if (e.target.value.length > 0) {
+        setTyping(activeConversationId, true);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+          setTyping(activeConversationId, false);
+        }, 3000);
+      } else {
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        setTyping(activeConversationId, false);
+      }
     }
   };
 
@@ -408,13 +490,13 @@ export default function ChatPage() {
     const contentToSend = messageInput.trim();
     const attachmentsToSend = attachmentPreview
       ? [
-          {
-            url: attachmentPreview.url,
-            type: attachmentPreview.type as any,
-            name: attachmentPreview.name,
-            size: 1024 * 500,
-          },
-        ]
+        {
+          url: attachmentPreview.url,
+          type: attachmentPreview.type as any,
+          name: attachmentPreview.name,
+          size: 1024 * 500,
+        },
+      ]
       : [];
     const replyId = replyingTo?._id;
 
@@ -569,17 +651,71 @@ export default function ChatPage() {
     }
   };
 
-  // Filter conversations
-  const filteredConversations = conversations.filter((c) => {
-    const details = getConversationDetails(c);
-    const matchesQuery = details.name.toLowerCase().includes(searchQuery.toLowerCase());
-    if (filterCategory === 'Groups') return matchesQuery && c.type === 'group';
-    if (filterCategory === 'Work') return matchesQuery && c.type === 'direct';
-    return matchesQuery;
-  });
+  // Filter & Sort conversations (Pinned items stay at top)
+  const filteredConversations = conversations
+    .filter((c) => {
+      const details = getConversationDetails(c);
+      const matchesQuery = details.name.toLowerCase().includes(searchQuery.toLowerCase());
+      if (filterCategory === 'Favorites') return matchesQuery && favoriteConversationIds.includes(c._id);
+      if (filterCategory === 'Groups') return matchesQuery && c.type === 'group';
+      if (filterCategory === 'Work') return matchesQuery && c.type === 'direct';
+      return matchesQuery;
+    })
+    .sort((a, b) => {
+      const aPinned = pinnedConversationIds.includes(a._id) ? 1 : 0;
+      const bPinned = pinnedConversationIds.includes(b._id) ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned; // Pinned items first!
+      return new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime();
+    });
 
-  const activeTypingNames = activeConversationId ? typingUsers[activeConversationId] || [] : [];
   const realMediaItems = currentMessages.flatMap((m) => m.attachments || []);
+
+  // Robust deduplication of unique available users for group member selection
+  const availableGroupUsers = (() => {
+    const map = new Map<string, any>();
+    conversations.forEach((c) => {
+      if (!c.participants) return;
+      c.participants.forEach((p: any) => {
+        if (!p) return;
+        const pId = typeof p === 'string' ? p : p._id || p.id;
+        if (!pId || pId === user?._id) return;
+        if (typeof p === 'object' && p.username) {
+          const key = (p._id || p.id || p.username).toString();
+          if (!map.has(key)) {
+            map.set(key, p);
+          }
+        }
+      });
+    });
+    return Array.from(map.values());
+  })();
+
+  const openEditGroupModal = () => {
+    if (!activeConversation || activeConversation.type !== 'group') return;
+    setGroupEditName(activeConversation.name || '');
+    setGroupEditAvatar(activeConversation.avatar || '');
+    setGroupEditDescription(activeConversation.description || '');
+    setIsEditGroupModalOpen(true);
+  };
+
+  const handleSaveGroupProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeConversation) return;
+    setUpdatingGroupProfile(true);
+    try {
+      await updateGroupProfile(activeConversation._id, {
+        name: groupEditName,
+        avatar: groupEditAvatar,
+        description: groupEditDescription,
+      });
+      showToast({ title: 'Group details updated!', variant: 'success' });
+      setIsEditGroupModalOpen(false);
+    } catch (err: any) {
+      showToast({ title: 'Failed to update group', description: err.message, variant: 'error' });
+    } finally {
+      setUpdatingGroupProfile(false);
+    }
+  };
 
   const handleSaveBio = async () => {
     try {
@@ -618,14 +754,13 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen w-full max-w-full bg-canvas text-text-primary overflow-hidden font-sans antialiased selection:bg-[#EE673A]/30">
-      
+
       {/* ========================================================================= */}
       {/* 1. LEFT CONVERSATIONS & TABS PANEL */}
       {/* ========================================================================= */}
       <div
-        className={`w-full md:w-96 flex-shrink-0 bg-surface border-r border-subtle flex flex-col h-full relative z-20 transition-all ${
-          mobileView === 'list' ? 'flex' : 'hidden md:flex'
-        }`}
+        className={`w-full md:w-96 flex-shrink-0 bg-surface border-r border-subtle flex flex-col h-full relative z-20 transition-all ${mobileView === 'list' ? 'flex' : 'hidden md:flex'
+          }`}
       >
         {/* Top Header */}
         <div className="p-4 flex items-center justify-between">
@@ -701,11 +836,10 @@ export default function ChatPage() {
                 <button
                   key={cat}
                   onClick={() => setFilterCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-                    filterCategory === cat
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${filterCategory === cat
                       ? 'bg-[#EE673A] text-white shadow-lg shadow-[#EE673A]/25'
                       : 'bg-sunken text-text-secondary hover:text-text-primary hover:bg-sunken/80'
-                  }`}
+                    }`}
                 >
                   {cat}
                 </button>
@@ -739,76 +873,126 @@ export default function ChatPage() {
                 filteredConversations.map((conv) => {
                   const details = getConversationDetails(conv);
                   const isSelected = conv._id === activeConversationId;
+                  const isPinned = pinnedConversationIds.includes(conv._id);
+                  const isFavorite = favoriteConversationIds.includes(conv._id);
                   const unread = conv.unreadCounts?.[user._id] || 0;
                   const isTyping = (typingUsers[conv._id] || []).length > 0;
                   const isLastMessageRead = isMessageReadByRecipient(conv.lastMessage, conv);
 
                   return (
-                    <button
+                    <SwipeableChatItem
                       key={conv._id}
-                      onClick={() => {
+                      isPinned={isPinned}
+                      isFavorite={isFavorite}
+                      onSelect={() => {
                         selectConversation(conv._id);
                         setMobileView('chat');
                       }}
-                      className={`w-full p-3 my-1 rounded-2xl flex items-center gap-3.5 text-left transition-all ${
-                        isSelected
-                          ? 'bg-sunken border border-subtle shadow-md'
-                          : 'hover:bg-sunken/50'
-                      }`}
+                      onTogglePin={() => {
+                        togglePinConversation(conv._id);
+                        showToast({
+                          title: isPinned ? 'Chat Unpinned' : 'Chat Pinned to Top',
+                          variant: 'info',
+                        });
+                      }}
+                      onToggleFavorite={() => {
+                        toggleFavoriteConversation(conv._id);
+                        showToast({
+                          title: isFavorite ? 'Removed from Favorites' : 'Added to Favorites section',
+                          variant: 'success',
+                        });
+                      }}
                     >
-                      <div className="relative">
-                        <Avatar initials={details.name.slice(0, 2)} src={details.avatar} size="md" />
-                        {details.isOnline && (
-                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#EE673A] border-2 border-surface" />
-                        )}
-                      </div>
+                      <div
+                        className={`w-full p-3 rounded-2xl flex items-center gap-3.5 text-left transition-all relative ${isSelected
+                            ? 'bg-sunken border-2 border-[#EE673A] shadow-md shadow-[#EE673A]/15'
+                            : isPinned
+                              ? 'bg-sunken/40 border-l-4 border-l-[#EE673A] border-y border-r border-subtle'
+                              : isFavorite
+                                ? 'bg-sunken/30 border-r-2 border-r-rose-500/80 border-l border-y border-subtle'
+                                : 'bg-surface border border-subtle/80 hover:border-[#EE673A]/40 hover:bg-sunken/50'
+                          }`}
+                      >
+                        <div className="relative shrink-0">
+                          <Avatar initials={details.name.slice(0, 2)} src={details.avatar} size="md" />
+                          {details.isOnline && (
+                            <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#EE673A] border-2 border-surface" />
+                          )}
+                        </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <h3 className="font-semibold text-xs text-text-primary truncate">{details.name}</h3>
-                          {conv.updatedAt && (
-                            <span className="text-[10px] text-text-tertiary flex-shrink-0">
-                              {new Date(conv.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[11px] text-text-secondary truncate flex items-center gap-1">
-                            {isTyping ? (
-                              <span className="text-[#EE673A] font-semibold animate-pulse">Typing...</span>
-                            ) : (
-                              <>
-                                {/* Single Gray Check when Unread, Double Blue Check ONLY when Read! */}
-                                {conv.lastMessage?.sender?._id === user._id && (
-                                  isLastMessageRead ? (
-                                    <CheckCheck className="w-3.5 h-3.5 text-cyan-400 inline shrink-0" />
-                                  ) : (
-                                    <Check className="w-3.5 h-3.5 text-text-tertiary inline shrink-0" />
-                                  )
-                                )}
-                                {conv.lastMessage?.isDeleted || conv.lastMessage?.content === 'This message was deleted' ? (
-                                  <span className="truncate italic text-text-tertiary inline-flex items-center gap-1">
-                                    <Ban className="w-3 h-3 inline shrink-0 opacity-70" />
-                                    This message was deleted
-                                  </span>
-                                ) : (
-                                  <span className="truncate">{conv.lastMessage?.content || 'No messages yet'}</span>
-                                )}
-                              </>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1 mb-0.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <h3 className="font-semibold text-xs text-text-primary truncate">{details.name}</h3>
+                              {isPinned && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-[#EE673A]/15 text-[#EE673A] text-[9px] font-bold flex items-center gap-0.5 shrink-0">
+                                  <Pin className="w-2.5 h-2.5" /> Pinned
+                                </span>
+                              )}
+                              {isFavorite && (
+                                <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
+                              )}
+                            </div>
+                            {conv.updatedAt && (
+                              <span className="text-[10px] text-text-tertiary flex-shrink-0">
+                                {new Date(conv.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
                             )}
-                          </p>
-                          {unread > 0 && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EE673A] text-white animate-bounce shadow-md shadow-[#EE673A]/40">
-                              {unread}
-                            </span>
-                          )}
+                          </div>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] text-text-secondary truncate flex items-center gap-1">
+                              {isTyping ? (
+                                <span className="text-[#EE673A] font-semibold flex items-center gap-1.5">
+                                  <span>Typing</span>
+                                  <TypingDots size="sm" />
+                                </span>
+                              ) : (
+                                <>
+                                  {/* Single Gray Check when Unread, Double Blue Check ONLY when Read! */}
+                                  {conv.lastMessage?.sender?._id === user._id && (
+                                    isLastMessageRead ? (
+                                      <CheckCheck className="w-3.5 h-3.5 text-cyan-400 inline shrink-0" />
+                                    ) : (
+                                      <Check className="w-3.5 h-3.5 text-text-tertiary inline shrink-0" />
+                                    )
+                                  )}
+                                  {conv.lastMessage?.isDeleted || conv.lastMessage?.content === 'This message was deleted' ? (
+                                    <span className="truncate italic text-text-tertiary inline-flex items-center gap-1">
+                                      <Ban className="w-3 h-3 inline shrink-0 opacity-70" />
+                                      This message was deleted
+                                    </span>
+                                  ) : (
+                                    <span className="truncate">{conv.lastMessage?.content || 'No messages yet'}</span>
+                                  )}
+                                </>
+                              )}
+                            </p>
+                            {unread > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#EE673A] text-white animate-bounce shadow-md shadow-[#EE673A]/40">
+                                {unread}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </button>
+                    </SwipeableChatItem>
                   );
                 })
               )}
             </div>
+
+            {/* Floating Action Button (FAB) for Creating Group - Elevated above bottom line */}
+            <button
+              onClick={() => {
+                setGroupName('');
+                setSelectedGroupMembers([]);
+                setIsGroupModalOpen(true);
+              }}
+              className="absolute bottom-28 right-4 z-30 p-3.5 rounded-2xl bg-gradient-to-tr from-[#EE673A] to-[#FF8A64] text-white shadow-xl shadow-[#EE673A]/40 hover:scale-110 active:scale-95 transition-all flex items-center justify-center border border-white/20 cursor-pointer"
+              title="Create Group Chat"
+            >
+              <Plus className="w-5 h-5 stroke-[2.5]" />
+            </button>
           </>
         )}
 
@@ -1003,36 +1187,32 @@ export default function ChatPage() {
         <nav className="py-3 px-4 bg-surface/90 backdrop-blur-md border-t border-subtle flex items-center justify-around relative">
           <button
             onClick={() => setActiveTab('chats')}
-            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
-              activeTab === 'chats' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-            }`}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${activeTab === 'chats' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+              }`}
           >
             <MessageSquare className="w-5 h-5" />
             <span className="text-[10px]">Chats</span>
           </button>
           <button
             onClick={() => setActiveTab('call')}
-            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
-              activeTab === 'call' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-            }`}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${activeTab === 'call' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+              }`}
           >
             <Phone className="w-5 h-5" />
             <span className="text-[10px]">Call</span>
           </button>
           <button
             onClick={() => setActiveTab('updates')}
-            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
-              activeTab === 'updates' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-            }`}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${activeTab === 'updates' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+              }`}
           >
             <Sparkles className="w-5 h-5" />
             <span className="text-[10px]">Updates</span>
           </button>
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${
-              activeTab === 'profile' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
-            }`}
+            className={`flex flex-col items-center gap-1 text-xs font-semibold transition-colors ${activeTab === 'profile' ? 'text-[#EE673A]' : 'text-text-tertiary hover:text-text-primary'
+              }`}
           >
             <Avatar initials={user.username.slice(0, 2)} src={user.avatar} size="sm" />
             <span className="text-[10px]">Profile</span>
@@ -1045,9 +1225,8 @@ export default function ChatPage() {
       {/* ========================================================================= */}
       {activeConversation ? (
         <main
-          className={`flex-1 flex flex-col h-full bg-canvas relative z-10 transition-all ${
-            mobileView === 'chat' ? 'flex' : 'hidden md:flex'
-          }`}
+          className={`flex-1 flex flex-col h-full bg-canvas relative z-10 transition-all ${mobileView === 'chat' ? 'flex' : 'hidden md:flex'
+            }`}
         >
           {/* Header */}
           <header className="p-3.5 border-b border-subtle bg-surface/90 backdrop-blur-xl flex items-center justify-between">
@@ -1061,22 +1240,46 @@ export default function ChatPage() {
 
               {(() => {
                 const details = getConversationDetails(activeConversation);
+                const isGroup = activeConversation.type === 'group';
+
                 return (
-                  <>
-                    <Avatar initials={details.name.slice(0, 2)} src={details.avatar} size="md" />
+                  <div
+                    onClick={() => isGroup && openEditGroupModal()}
+                    className={`flex items-center gap-3 ${isGroup ? 'cursor-pointer group/header hover:opacity-90 transition-opacity' : ''
+                      }`}
+                    title={isGroup ? 'Click to edit Group Avatar & Description' : ''}
+                  >
+                    <div className="relative">
+                      <Avatar initials={details.name.slice(0, 2)} src={details.avatar} size="md" />
+                      {isGroup && (
+                        <div className="absolute -bottom-1 -right-1 p-1 rounded-full bg-[#EE673A] text-white opacity-0 group-hover/header:opacity-100 transition-opacity shadow-sm">
+                          <Camera className="w-2.5 h-2.5" />
+                        </div>
+                      )}
+                    </div>
                     <div>
-                      <h2 className="font-display font-bold text-sm text-text-primary">{details.name}</h2>
-                      <p className="text-[11px] text-text-secondary">
-                        {activeTypingNames.length > 0 ? (
-                          <span className="text-[#EE673A] font-semibold animate-pulse">
-                            {activeTypingNames.join(', ')} is typing...
+                      <h2 className="font-display font-bold text-sm text-text-primary flex items-center gap-1.5">
+                        <span>{details.name}</span>
+                        {isGroup && (
+                          <span className="text-[9px] text-[#EE673A] font-semibold bg-[#EE673A]/10 border border-[#EE673A]/20 px-1.5 py-0.5 rounded-md">
+                            Edit
                           </span>
+                        )}
+                      </h2>
+                      <p className="text-[11px] text-text-secondary truncate max-w-xs">
+                        {activeTypingNames.length > 0 ? (
+                          <span className="text-[#EE673A] font-semibold flex items-center gap-1.5">
+                            <span>{activeTypingNames.join(', ')} is typing</span>
+                            <TypingDots size="sm" />
+                          </span>
+                        ) : isGroup && details.description ? (
+                          <span className="truncate">{details.description} • {details.statusText}</span>
                         ) : (
                           details.statusText
                         )}
                       </p>
                     </div>
-                  </>
+                  </div>
                 );
               })()}
             </div>
@@ -1101,9 +1304,8 @@ export default function ChatPage() {
                   setShowRightSidebar(!showRightSidebar);
                   setMobileView('profile');
                 }}
-                className={`p-2.5 rounded-xl transition-colors ${
-                  showRightSidebar ? 'bg-[#EE673A]/20 text-[#EE673A]' : 'hover:bg-sunken text-text-secondary'
-                }`}
+                className={`p-2.5 rounded-xl transition-colors ${showRightSidebar ? 'bg-[#EE673A]/20 text-[#EE673A]' : 'hover:bg-sunken text-text-secondary'
+                  }`}
                 title="Info"
               >
                 <MoreVertical className="w-4 h-4" />
@@ -1132,115 +1334,125 @@ export default function ChatPage() {
                 return (
                   <div
                     key={msg._id}
-                    className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative`}
+                    className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group relative my-1.5`}
                   >
                     {!isMe && activeConversation.type === 'group' && (
-                      <span className="text-[10px] font-semibold text-text-tertiary mb-1 ml-1">
+                      <span className="text-[10px] font-semibold text-text-tertiary mb-1 ml-2.5">
                         {msg.sender?.username}
                       </span>
                     )}
 
-                    <div className="flex items-center gap-2 max-w-[88%] sm:max-w-[75%]">
-                      {/* Message Bubble */}
-                      {isDeletedMsg ? (
-                        <div
-                          className={`rounded-2xl px-3.5 py-2.5 text-xs border flex items-center gap-2 shadow-sm transition-all ${
-                            isMe
-                              ? 'bg-sunken/80 border-subtle text-text-tertiary rounded-br-none'
-                              : 'bg-surface border-subtle text-text-tertiary rounded-bl-none'
-                          }`}
-                        >
-                          <Ban className="w-3.5 h-3.5 text-text-tertiary/70 flex-shrink-0" />
-                          <span className="italic font-normal opacity-85">This message was deleted</span>
-                          <span className="text-[10px] text-text-tertiary/60 ml-2 self-end">
-                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ) : (
-                        <div
-                          className={`rounded-3xl p-4 text-xs space-y-2 shadow-md transition-all ${
-                            isMe
-                              ? 'bg-[#EE673A] text-white rounded-br-none border border-[#EE673A]/20 shadow-[#EE673A]/15'
-                              : 'bg-surface text-text-primary rounded-bl-none border border-subtle backdrop-blur-md'
-                          }`}
-                        >
-                          {/* Reply reference */}
-                          {msg.replyTo && (
-                            <div className={`rounded-xl p-2 text-[11px] border-l-2 border-[#EE673A] mb-1 ${
-                              isMe ? 'bg-black/20 text-white' : 'bg-sunken text-text-primary'
-                            }`}>
-                              <span className="font-semibold block text-[10px] text-[#EE673A]">
-                                @{msg.replyTo.sender?.username}
-                              </span>
-                              <p className="truncate opacity-90">{msg.replyTo.content}</p>
+                    <div className={`flex items-end gap-2 max-w-[85%] sm:max-w-[72%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                      {/* Message Bubble Container */}
+                      <div className="flex flex-col space-y-1 min-w-0">
+                        {/* Reply card reference */}
+                        {msg.replyTo && (
+                          <div
+                            onClick={() => {
+                              const el = document.getElementById(`msg-${msg.replyTo?._id}`);
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }}
+                            className={`cursor-pointer text-xs p-3 rounded-[20px] transition-all border shadow-sm ${isMe
+                              ? 'bg-[#EE673A]/15 border-[#EE673A]/30 text-text-primary rounded-br-[6px]'
+                              : 'bg-sunken border-subtle text-text-primary rounded-bl-[6px]'
+                              }`}
+                          >
+                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#EE673A] mb-0.5">
+                              <Reply className="w-3 h-3 rotate-180" />
+                              <span>@{msg.replyTo.sender?.username || 'user'}</span>
                             </div>
-                          )}
-
-                          {/* Content text */}
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-
-                          {/* Attachments */}
-                          {msg.attachments && msg.attachments.length > 0 && (
-                            <div className="pt-2 space-y-2">
-                              {msg.attachments.map((att, i) => {
-                                const isAudio =
-                                  att.type === 'audio' ||
-                                  (att.name && /\.(mp3|wav|ogg|m4a|webm)$/i.test(att.name)) ||
-                                  (att.url && att.url.startsWith('data:audio'));
-
-                                return (
-                                  <div key={i} className="rounded-2xl overflow-hidden relative">
-                                    {att.type === 'image' ? (
-                                      <div className="relative border border-subtle rounded-2xl overflow-hidden">
-                                        <img
-                                          src={att.url}
-                                          alt={att.name}
-                                          className="max-h-64 w-full object-cover rounded-2xl"
-                                        />
-                                      </div>
-                                    ) : isAudio ? (
-                                      <AudioPlayer src={att.url} name={att.name || 'Voice Note'} isMe={isMe} />
-                                    ) : (
-                                      <a
-                                        href={att.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className={`flex items-center gap-2 p-3 rounded-xl text-xs border ${
-                                          isMe ? 'bg-black/20 border-white/10 text-white' : 'bg-sunken border-subtle text-text-primary'
-                                        }`}
-                                      >
-                                        <FileText className="w-4 h-4 text-[#EE673A]" />
-                                        <span className="truncate font-medium">{att.name}</span>
-                                      </a>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Timestamp & Read Receipts */}
-                          <div className={`flex items-center justify-end gap-1.5 text-[10px] pt-1 ${
-                            isMe ? 'text-white/80' : 'text-text-tertiary'
-                          }`}>
-                            <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            {isMe && (
-                              isRead ? (
-                                <CheckCheck className="w-3.5 h-3.5 text-cyan-200" />
-                              ) : (
-                                <Check className="w-3.5 h-3.5 text-white/70" />
-                              )
-                            )}
+                            <p className="text-xs opacity-90 truncate max-w-xs">{msg.replyTo.content}</p>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Action buttons */}
+                        {/* Main Message Bubble */}
+                        {isDeletedMsg ? (
+                          <div
+                            className={`px-4 py-2.5 text-xs rounded-[22px] border flex items-center gap-2 shadow-sm transition-all ${isMe
+                              ? 'bg-sunken/80 border-subtle text-text-tertiary rounded-br-[4px]'
+                              : 'bg-surface border-subtle text-text-tertiary rounded-bl-[4px]'
+                              }`}
+                          >
+                            <Ban className="w-3.5 h-3.5 text-text-tertiary/70 shrink-0" />
+                            <span className="italic font-normal opacity-85">This message was deleted</span>
+                            <span className="text-[10px] text-text-tertiary/60 ml-2 self-end">
+                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            id={`msg-${msg._id}`}
+                            className={`px-4 py-2.5 text-xs space-y-1.5 shadow-md transition-all ${isMe
+                              ? 'bg-gradient-to-r from-[#EE673A] to-[#FF7A50] text-white rounded-[22px] rounded-br-[4px] border border-[#EE673A]/20 shadow-[#EE673A]/15'
+                              : 'bg-surface text-text-primary rounded-[22px] rounded-bl-[4px] border border-subtle backdrop-blur-md'
+                              }`}
+                          >
+                            {/* Content text */}
+                            <p className="whitespace-pre-wrap leading-relaxed font-normal text-xs">{msg.content}</p>
+
+                            {/* Attachments */}
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="pt-1.5 space-y-2">
+                                {msg.attachments.map((att, i) => {
+                                  const isAudio =
+                                    att.type === 'audio' ||
+                                    (att.name && /\.(mp3|wav|ogg|m4a|webm)$/i.test(att.name)) ||
+                                    (att.url && att.url.startsWith('data:audio'));
+
+                                  return (
+                                    <div key={i} className="rounded-2xl overflow-hidden relative">
+                                      {att.type === 'image' ? (
+                                        <div className="relative border border-subtle rounded-2xl overflow-hidden">
+                                          <img
+                                            src={att.url}
+                                            alt={att.name}
+                                            className="max-h-64 w-full object-cover rounded-2xl"
+                                          />
+                                        </div>
+                                      ) : isAudio ? (
+                                        <AudioPlayer src={att.url} name={att.name || 'Voice Note'} isMe={isMe} />
+                                      ) : (
+                                        <a
+                                          href={att.url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className={`flex items-center gap-2 p-3 rounded-xl text-xs border ${isMe ? 'bg-black/20 border-white/10 text-white' : 'bg-sunken border-subtle text-text-primary'
+                                            }`}
+                                        >
+                                          <FileText className="w-4 h-4 text-[#EE673A]" />
+                                          <span className="truncate font-medium">{att.name}</span>
+                                        </a>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
+                            {/* Timestamp & Read Receipts */}
+                            <div
+                              className={`flex items-center justify-end gap-1.5 text-[10px] pt-0.5 ${isMe ? 'text-white/85' : 'text-text-tertiary'
+                                }`}
+                            >
+                              <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              {isMe && (
+                                isRead ? (
+                                  <CheckCheck className="w-3.5 h-3.5 text-cyan-200" />
+                                ) : (
+                                  <Check className="w-3.5 h-3.5 text-white/70" />
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Hover Action Buttons */}
                       {!isDeletedMsg && (
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity mb-1 shrink-0">
                           <button
                             onClick={() => setReplyingTo(msg)}
-                            className="p-1.5 rounded-lg hover:bg-sunken text-text-tertiary hover:text-text-primary"
+                            className="p-1.5 rounded-full hover:bg-sunken text-text-tertiary hover:text-[#EE673A] transition-colors"
                             title="Reply"
                           >
                             <Reply className="w-3.5 h-3.5" />
@@ -1248,7 +1460,7 @@ export default function ChatPage() {
                           {isMe && (
                             <button
                               onClick={() => deleteMessage(msg._id)}
-                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-text-tertiary hover:text-red-400"
+                              className="p-1.5 rounded-full hover:bg-red-500/10 text-text-tertiary hover:text-red-400 transition-colors"
                               title="Delete"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1261,6 +1473,14 @@ export default function ChatPage() {
                 );
               })
             )}
+            {/* Real-time typing bubble animation */}
+            <TypingIndicator
+              typingUsers={activeTypingNames}
+              avatar={
+                activeConversation.participants?.find((p) => p.username === activeTypingNames[0])?.avatar ||
+                getConversationDetails(activeConversation).avatar
+              }
+            />
             <div ref={messagesEndRef} />
           </div>
 
@@ -1439,6 +1659,25 @@ export default function ChatPage() {
             <p className="text-xs text-text-tertiary">
               {activeConversation ? getConversationDetails(activeConversation).statusText : user.email}
             </p>
+            {activeConversation ? (
+              getConversationDetails(activeConversation).description && (
+                <div className="pt-1">
+                  <span className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider block mb-1">About / Bio</span>
+                  <p className="text-xs text-text-secondary italic px-3 py-1.5 bg-sunken rounded-xl border border-subtle inline-block max-w-full break-words">
+                    "{getConversationDetails(activeConversation).description}"
+                  </p>
+                </div>
+              )
+            ) : (
+              user.bio && (
+                <div className="pt-1">
+                  <span className="text-[10px] uppercase font-bold text-text-tertiary tracking-wider block mb-1">About / Bio</span>
+                  <p className="text-xs text-text-secondary italic px-3 py-1.5 bg-sunken rounded-xl border border-subtle inline-block max-w-full break-words">
+                    "{user.bio}"
+                  </p>
+                </div>
+              )
+            )}
           </div>
 
           {/* Dynamic Stats Grid */}
@@ -1506,14 +1745,12 @@ export default function ChatPage() {
               </div>
               <button
                 onClick={() => setLockChat(!lockChat)}
-                className={`w-10 h-5 rounded-full p-0.5 transition-colors ${
-                  lockChat ? 'bg-[#EE673A]' : 'bg-surface border border-subtle'
-                }`}
+                className={`w-10 h-5 rounded-full p-0.5 transition-colors ${lockChat ? 'bg-[#EE673A]' : 'bg-surface border border-subtle'
+                  }`}
               >
                 <div
-                  className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                    lockChat ? 'translate-x-5' : 'translate-x-0'
-                  }`}
+                  className={`w-4 h-4 rounded-full bg-white transition-transform ${lockChat ? 'translate-x-5' : 'translate-x-0'
+                    }`}
                 />
               </button>
             </div>
@@ -1528,22 +1765,20 @@ export default function ChatPage() {
             <button
               type="button"
               onClick={() => setStoryInputType('image')}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl border ${
-                storyInputType === 'image'
+              className={`flex-1 py-2 text-xs font-bold rounded-xl border ${storyInputType === 'image'
                   ? 'bg-[#EE673A] text-white border-[#EE673A]'
                   : 'bg-sunken text-text-tertiary border-subtle'
-              }`}
+                }`}
             >
               Photo Story
             </button>
             <button
               type="button"
               onClick={() => setStoryInputType('text')}
-              className={`flex-1 py-2 text-xs font-bold rounded-xl border ${
-                storyInputType === 'text'
+              className={`flex-1 py-2 text-xs font-bold rounded-xl border ${storyInputType === 'text'
                   ? 'bg-[#EE673A] text-white border-[#EE673A]'
                   : 'bg-sunken text-text-tertiary border-subtle'
-              }`}
+                }`}
             >
               Text Story
             </button>
@@ -1643,20 +1878,34 @@ export default function ChatPage() {
 
       {/* ----------------- FULLSCREEN STORY VIEWER MODAL ----------------- */}
       {activeStoryGroup && (
-        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-4">
-          <div className="w-full max-w-sm h-[80vh] rounded-3xl overflow-hidden relative flex flex-col justify-between p-6 shadow-2xl border border-white/10"
-               style={{
-                 background: activeStoryGroup.stories[activeStoryIndex]?.bgGradient || '#1C1615',
-               }}
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-4 select-none">
+          <div
+            className="w-full max-w-sm h-[80vh] rounded-3xl overflow-hidden relative flex flex-col justify-between p-6 shadow-2xl border border-white/10"
+            style={{
+              background: activeStoryGroup.stories[activeStoryIndex]?.bgGradient || '#1C1615',
+            }}
           >
+            {/* Tap zones for zero-delay instant prev/next story navigation */}
+            <div className="absolute inset-0 z-10 flex">
+              <div
+                onClick={handlePrevStory}
+                className="w-1/2 h-full cursor-pointer opacity-0 hover:bg-white/5 transition-opacity"
+                title="Tap left for previous story"
+              />
+              <div
+                onClick={handleNextStory}
+                className="w-1/2 h-full cursor-pointer opacity-0 hover:bg-white/5 transition-opacity"
+                title="Tap right for next story"
+              />
+            </div>
+
             {/* Story Progress Bar */}
-            <div className="flex gap-1.5 absolute top-4 left-4 right-4 z-20">
+            <div className="flex gap-1.5 absolute top-4 left-4 right-4 z-20 pointer-events-none">
               {activeStoryGroup.stories.map((_, i) => (
                 <div key={i} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
                   <div
-                    className={`h-full bg-white transition-all duration-300 ${
-                      i === activeStoryIndex ? 'w-full' : i < activeStoryIndex ? 'w-full' : 'w-0'
-                    }`}
+                    className={`h-full bg-white transition-all duration-300 ${i === activeStoryIndex ? 'w-full' : i < activeStoryIndex ? 'w-full' : 'w-0'
+                      }`}
                   />
                 </div>
               ))}
@@ -1673,13 +1922,20 @@ export default function ChatPage() {
                   </span>
                 </div>
               </div>
-              <button onClick={() => setActiveStoryGroup(null)} className="p-2 rounded-full bg-black/40 text-white">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveStoryGroup(null);
+                }}
+                className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Story Content */}
-            <div className="flex-1 flex flex-col items-center justify-center my-6 relative z-10 text-center">
+            <div className="flex-1 flex flex-col items-center justify-center my-6 relative z-10 text-center pointer-events-none">
               {activeStoryGroup.stories[activeStoryIndex]?.mediaUrl && (
                 <img
                   src={activeStoryGroup.stories[activeStoryIndex].mediaUrl}
@@ -1694,17 +1950,79 @@ export default function ChatPage() {
               )}
             </div>
 
-            {/* Bottom Views Footer */}
+            {/* Bottom Views Footer - ONLY story owner can see view count & viewers list */}
             <div className="flex items-center justify-between text-xs text-white/80 pt-2 border-t border-white/10 relative z-20">
-              <div className="flex items-center gap-1.5">
-                <Eye className="w-4 h-4 text-cyan-300" />
-                <span>{activeStoryGroup.stories[activeStoryIndex]?.views?.length || 0} views</span>
-              </div>
+              {activeStoryGroup.user._id === user._id ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsViewersModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white transition-all border border-white/10 cursor-pointer group"
+                  title="Click to view story viewers list"
+                >
+                  <Eye className="w-4 h-4 text-cyan-300 group-hover:scale-110 transition-transform" />
+                  <span className="font-semibold text-xs">
+                    {activeStoryGroup.stories[activeStoryIndex]?.views?.length || 0} views
+                  </span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 text-[11px] text-white/75 font-medium">
+                  <span>Status update</span>
+                </div>
+              )}
               <span className="text-[10px] opacity-70">Tap right for next</span>
             </div>
           </div>
         </div>
       )}
+
+      {/* ----------------- MODAL: STORY VIEWERS (STORY CREATOR ONLY) ----------------- */}
+      <Modal
+        open={isViewersModalOpen && activeStoryGroup?.user._id === user._id}
+        onClose={() => setIsViewersModalOpen(false)}
+        title="Story Viewers"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-subtle pb-2">
+            <span className="text-xs font-semibold text-text-tertiary uppercase">Viewed by</span>
+            <span className="text-xs font-bold text-[#EE673A]">
+              {activeStoryGroup?.stories[activeStoryIndex]?.views?.length || 0} people
+            </span>
+          </div>
+
+          {(!activeStoryGroup?.stories[activeStoryIndex]?.views || activeStoryGroup.stories[activeStoryIndex].views.length === 0) ? (
+            <div className="p-8 text-center space-y-2">
+              <Eye className="w-8 h-8 mx-auto text-text-tertiary opacity-40" />
+              <p className="text-xs text-text-tertiary">No views yet. Share your status update with friends!</p>
+            </div>
+          ) : (
+            <div className="max-h-72 overflow-y-auto space-y-2.5 custom-scrollbar">
+              {activeStoryGroup.stories[activeStoryIndex].views.map((viewer: any, idx: number) => {
+                const vUser = typeof viewer === 'object' ? viewer : { _id: viewer, username: 'User', avatar: '' };
+                return (
+                  <div
+                    key={vUser._id || idx}
+                    className="flex items-center justify-between p-2.5 rounded-2xl bg-sunken border border-subtle"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar initials={(vUser.username || 'U').slice(0, 2)} src={vUser.avatar} size="sm" />
+                      <div>
+                        <div className="text-xs font-bold text-text-primary">{vUser.username || 'User'}</div>
+                        <div className="text-[10px] text-text-tertiary">{vUser.email || 'Viewed status'}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-[10px] text-cyan-400 font-semibold bg-cyan-500/10 px-2 py-1 rounded-full border border-cyan-500/20">
+                      <Eye className="w-3 h-3" /> Seen
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* ----------------- MODAL: START DIRECT CHAT ----------------- */}
       <Modal open={isNewChatModalOpen} onClose={() => setIsNewChatModalOpen(false)} title="Start New Chat">
@@ -1746,36 +2064,79 @@ export default function ChatPage() {
           />
 
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-text-tertiary uppercase">Select Group Members</label>
-            <div className="max-h-48 overflow-y-auto space-y-2">
-              {conversations.map((c) => {
-                const other = c.participants.find((p) => p._id !== user._id);
-                if (!other) return null;
-                const isSelected = selectedGroupMembers.includes(other._id);
-                return (
-                  <button
-                    key={other._id}
-                    onClick={() => {
-                      if (isSelected) {
-                        setSelectedGroupMembers(selectedGroupMembers.filter((id) => id !== other._id));
-                      } else {
-                        setSelectedGroupMembers([...selectedGroupMembers, other._id]);
-                      }
-                    }}
-                    className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-colors ${
-                      isSelected
-                        ? 'border-[#EE673A] bg-[#EE673A]/10'
-                        : 'border-subtle hover:bg-sunken'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar initials={other.username.slice(0, 2)} src={other.avatar} size="sm" />
-                      <span className="text-xs font-semibold text-text-primary">{other.username}</span>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 text-[#EE673A]" />}
-                  </button>
-                );
-              })}
+            <Input
+              placeholder="Search user by name to add..."
+              value={userSearchInput}
+              onChange={(e) => handleSearchUsers(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-text-tertiary uppercase flex items-center justify-between">
+              <span>Select Group Members</span>
+              <span className="text-[10px] text-[#EE673A] font-bold">{selectedGroupMembers.length} selected</span>
+            </label>
+
+            <div className="max-h-48 overflow-y-auto space-y-2 custom-scrollbar">
+              {userSearchInput.trim() && userSearchResults.length > 0 ? (
+                userSearchResults.map((u) => {
+                  if (u._id === user._id) return null;
+                  const isSelected = selectedGroupMembers.includes(u._id);
+                  return (
+                    <button
+                      key={u._id}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedGroupMembers(selectedGroupMembers.filter((id) => id !== u._id));
+                        } else {
+                          setSelectedGroupMembers([...selectedGroupMembers, u._id]);
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-colors ${isSelected
+                          ? 'border-[#EE673A] bg-[#EE673A]/10'
+                          : 'border-subtle hover:bg-sunken'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar initials={u.username.slice(0, 2)} src={u.avatar} size="sm" />
+                        <div>
+                          <div className="text-xs font-semibold text-text-primary">{u.username}</div>
+                          <div className="text-[10px] text-text-tertiary">{u.email}</div>
+                        </div>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-[#EE673A]" />}
+                    </button>
+                  );
+                })
+              ) : (
+                availableGroupUsers.map((other) => {
+                  const isSelected = selectedGroupMembers.includes(other._id);
+                  return (
+                    <button
+                      key={other._id}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedGroupMembers(selectedGroupMembers.filter((id) => id !== other._id));
+                        } else {
+                          setSelectedGroupMembers([...selectedGroupMembers, other._id]);
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-colors ${isSelected
+                          ? 'border-[#EE673A] bg-[#EE673A]/10'
+                          : 'border-subtle hover:bg-sunken'
+                        }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Avatar initials={other.username.slice(0, 2)} src={other.avatar} size="sm" />
+                        <span className="text-xs font-semibold text-text-primary">{other.username}</span>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-[#EE673A]" />}
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -1784,6 +2145,100 @@ export default function ChatPage() {
             <Button variant="primary" onClick={handleCreateGroup}>Create Group</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* ----------------- MODAL: EDIT GROUP PROFILE ----------------- */}
+      <Modal open={isEditGroupModalOpen} onClose={() => setIsEditGroupModalOpen(false)} title="Edit Group Profile">
+        <form onSubmit={handleSaveGroupProfile} className="space-y-4">
+          <div className="text-center space-y-3">
+            <div className="relative inline-block mx-auto">
+              <Avatar
+                initials={groupEditName.slice(0, 2) || 'GP'}
+                src={groupEditAvatar}
+                size="xl"
+                className="mx-auto border-2 border-[#EE673A]"
+              />
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-text-tertiary uppercase block">Choose Group Avatar</label>
+
+              {/* Preset Avatars */}
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  `https://api.dicebear.com/7.x/identicon/svg?seed=${groupEditName || 'group'}1`,
+                  `https://api.dicebear.com/7.x/bottts/svg?seed=${groupEditName || 'group'}2`,
+                  `https://api.dicebear.com/7.x/shapes/svg?seed=${groupEditName || 'group'}3`,
+                  `https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=256&q=80`,
+                ].map((url, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setGroupEditAvatar(url)}
+                    className={`p-1.5 rounded-xl border transition-all ${groupEditAvatar === url ? 'border-[#EE673A] bg-[#EE673A]/10 scale-105' : 'border-subtle hover:bg-sunken'
+                      }`}
+                  >
+                    <img src={url} alt={`Group Preset ${i}`} className="w-10 h-10 rounded-lg mx-auto object-cover" />
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <label className="flex-1 cursor-pointer p-2.5 rounded-xl bg-sunken border border-dashed border-subtle hover:border-[#EE673A] text-center text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center justify-center gap-2">
+                  <Camera className="w-4 h-4 text-[#EE673A]" />
+                  <span>Choose Photo File</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => setGroupEditAvatar(reader.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              <Input
+                placeholder="Or paste avatar image URL (https://...)"
+                value={groupEditAvatar}
+                onChange={(e) => setGroupEditAvatar(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <Input
+            label="Group Name"
+            placeholder="Group name"
+            value={groupEditName}
+            onChange={(e) => setGroupEditName(e.target.value)}
+            required
+          />
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-text-tertiary uppercase">Group Description</label>
+            <textarea
+              placeholder="Add group description or tagline..."
+              value={groupEditDescription}
+              onChange={(e) => setGroupEditDescription(e.target.value)}
+              rows={3}
+              className="w-full bg-sunken p-3 text-xs text-text-primary rounded-xl border border-subtle focus:outline-none focus:border-[#EE673A] transition-colors resize-none"
+            />
+          </div>
+
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="ghost" type="button" onClick={() => setIsEditGroupModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" loading={updatingGroupProfile}>
+              Save Group Profile
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* ----------------- MODAL: CHANGE AVATAR ----------------- */}
@@ -1815,9 +2270,8 @@ export default function ChatPage() {
                   key={i}
                   type="button"
                   onClick={() => setAvatarInputUrl(url)}
-                  className={`p-1.5 rounded-2xl border transition-all ${
-                    avatarInputUrl === url ? 'border-[#EE673A] bg-[#EE673A]/10 scale-105' : 'border-subtle hover:bg-sunken'
-                  }`}
+                  className={`p-1.5 rounded-2xl border transition-all ${avatarInputUrl === url ? 'border-[#EE673A] bg-[#EE673A]/10 scale-105' : 'border-subtle hover:bg-sunken'
+                    }`}
                 >
                   <img src={url} alt={`Preset ${i}`} className="w-12 h-12 rounded-full mx-auto" />
                 </button>

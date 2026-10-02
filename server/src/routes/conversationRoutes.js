@@ -6,6 +6,7 @@ import {
   markAsRead,
   addParticipant,
   removeParticipant,
+  updateGroupProfile,
 } from '../controllers/conversationController.js';
 import { protect } from '../middleware/auth.js';
 
@@ -16,6 +17,7 @@ router.use(protect);
 router.get('/', getConversations);
 router.post('/', createConversation);
 router.get('/:id', getConversationById);
+router.patch('/:id', updateGroupProfile);
 router.post('/:id/read', markAsRead);
 router.post('/:id/participants', addParticipant);
 router.delete('/:id/participants/:userId', removeParticipant);

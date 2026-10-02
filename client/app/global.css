@@ -137,3 +137,50 @@ body {
 .animate-pulse-ring {
   animation: pulse-ring 2s infinite ease-in-out;
 }
+
+/* Typing Indicator Wave Animation */
+@keyframes typing-dot-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(0.85);
+    opacity: 0.35;
+    box-shadow: 0 0 0 rgba(238, 103, 58, 0);
+  }
+  30% {
+    transform: translateY(-5px) scale(1.25);
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(238, 103, 58, 0.7);
+  }
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background-color: var(--accent-violet);
+  display: inline-block;
+  animation: typing-dot-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot-sm {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background-color: var(--accent-violet);
+  display: inline-block;
+  animation: typing-dot-bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot:nth-child(1),
+.typing-dot-sm:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2),
+.typing-dot-sm:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3),
+.typing-dot-sm:nth-child(3) {
+  animation-delay: 0.4s;
+}

@@ -193,3 +193,29 @@ export async function removeParticipant(req, res) {
     return res.status(500).json({ success: false, message: err.message });
   }
 }
+
+export async function updateGroupProfile(req, res) {
+  try {
+    const { id } = req.params;
+    const { name, avatar, description } = req.body;
+
+    const conversation = await Conversation.findById(id);
+    if (!conversation || conversation.type !== 'group') {
+      return res.status(404).json({ success: false, message: 'Group conversation not found' });
+    }
+
+    if (name) conversation.name = name;
+    if (avatar) conversation.avatar = avatar;
+    if (description !== undefined) conversation.description = description;
+
+    await conversation.save();
+
+    const updated = await Conversation.findById(id)
+      .populate('participants', 'username email avatar status lastSeen bio')
+      .populate('groupAdmin', 'username avatar');
+
+    return res.status(200).json({ success: true, data: updated });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}

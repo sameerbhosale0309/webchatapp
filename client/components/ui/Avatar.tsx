@@ -5,14 +5,14 @@ interface AvatarProps {
   url?: string | null;
   initials?: string;
   gradient?: [string, string];
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   presence?: 'online' | 'offline' | 'away' | null;
   alt?: string;
   className?: string;
 }
 
-const sizeMap = { sm: 32, md: 40, lg: 56, xl: 88 };
-const dotSizeMap = { sm: 8, md: 10, lg: 14, xl: 18 };
+const sizeMap = { xs: 26, sm: 32, md: 40, lg: 56, xl: 88 };
+const dotSizeMap = { xs: 6, sm: 8, md: 10, lg: 14, xl: 18 };
 
 export function Avatar({ src, url, initials = '?', gradient, size = 'md', presence, alt = '', className }: AvatarProps) {
   const px = sizeMap[size];

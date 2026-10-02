@@ -4,6 +4,7 @@
   "workspaces": ["client", "server"],
   "scripts": {
     "dev": "concurrently -n SERVER,CLIENT -c blue,magenta \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "start": "concurrently -n SERVER,CLIENT -c blue,magenta \"npm run dev --workspace server\" \"npm run start --workspace client\"",
     "install:all": "npm install"
   },
   "devDependencies": {
