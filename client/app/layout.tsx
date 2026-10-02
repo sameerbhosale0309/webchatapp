@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', weight: ['40
 const jbMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jbmono', weight: ['400', '500'] });
 
 export const metadata: Metadata = {
-  icons: { icon: '../logo.png' },
+
   title: 'Real Time VartaLaab',
   description: '',
 };

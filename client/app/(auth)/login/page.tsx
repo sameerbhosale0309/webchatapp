@@ -42,8 +42,8 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-accent-violet to-accent-pink shadow-lg shadow-accent-violet/30">
             <MessageSquare className="w-7 h-7 text-white" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-text-primary tracking-tight">Welcome to Echo</h1>
-          <p className="text-sm text-text-secondary">Ultra-fast real-time messaging & audio/video calling</p>
+          <h1 className="font-display text-3xl font-bold text-text-primary tracking-tight">Welcome to VartaLaab</h1>
+          <p className="text-sm text-text-secondary">Ultra-fast real-time VartaLaab & audio/video calling</p>
         </div>
 
         {error && (

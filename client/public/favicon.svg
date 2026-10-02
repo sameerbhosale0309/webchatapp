@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EE673A" />
+      <stop offset="50%" stop-color="#F97316" />
+      <stop offset="100%" stop-color="#FBBF24" />
+    </linearGradient>
+  </defs>
+  <!-- Gradient Chat Bubble Shape -->
+  <path d="M 256 32 C 132.3 32 32 132.3 32 256 C 32 316.5 56 371.4 95.2 411.6 C 82.5 448.2 54.8 474.6 51 478.2 C 46.8 482.2 45.4 488.4 47.5 493.8 C 49.6 499.2 54.8 502.8 60.5 502.8 C 122.4 502.8 171.2 468.5 198.8 447.1 C 217.1 454.2 236.1 458 256 458 C 379.7 458 480 357.7 480 234 C 480 110.3 379.7 32 256 32 Z" fill="url(#bubbleGrad)" />
+  <!-- Rounded Inner Lines -->
+  <rect x="170" y="185" width="85" height="42" rx="21" fill="#FFFFFF" />
+  <rect x="170" y="270" width="170" height="42" rx="21" fill="#FFFFFF" />
+</svg>
