@@ -10,7 +10,7 @@ export function isGmail(email) {
 export async function sendOtpEmail(email, otp, purpose = 'register') {
   const brevoApiKey = process.env.BREVO_API_KEY;
   const brevoSmtpKey = process.env.BREVO_SMTP_KEY;
-  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'sameerbhosale0309@gmail.com';
+  const senderEmail = process.env.BREVO_SENDER_EMAIL;
 
   const titleText = purpose === 'login' ? 'LOGIN VERIFICATION CODE' : 'REGISTRATION VERIFICATION CODE';
   const subject = purpose === 'login'
