@@ -34,6 +34,18 @@ export async function getConversations(req, res) {
           continue;
         }
       }
+
+      if (conv.lastMessage && conv.lastMessage.deletedFor && Array.isArray(conv.lastMessage.deletedFor) && conv.lastMessage.deletedFor.some(uid => uid.toString() === req.userId)) {
+        const lastValid = await Message.findOne({
+          conversationId: conv._id,
+          deletedFor: { $ne: req.userId },
+        })
+          .sort({ createdAt: -1 })
+          .populate('sender', 'username avatar')
+          .lean();
+        conv.lastMessage = lastValid || null;
+      }
+
       conversations.push(conv);
     }
 

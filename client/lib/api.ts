@@ -2,7 +2,8 @@ function getApiUrl(): string {
   let url = process.env.NEXT_PUBLIC_API_URL || '';
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (!url || ((url.includes('localhost') || url.includes('127.0.0.1')) && host !== 'localhost' && host !== '127.0.0.1')) {
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.') || host.endsWith('.local');
+    if (!url || ((url.includes('localhost') || url.includes('127.0.0.1')) && !isLocal)) {
       url = 'https://vartalaab-backend.onrender.com/api';
     }
   }

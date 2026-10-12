@@ -76,7 +76,7 @@ interface ChatState {
   createDirectConversation: (recipientId: string) => Promise<string>;
   createGroupConversation: (name: string, participantIds: string[], avatar?: string) => Promise<string>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
-  deleteMessage: (messageId: string) => Promise<void>;
+  deleteMessage: (messageId: string, deleteType?: 'me' | 'everyone') => Promise<void>;
   addMessage: (message: Message) => void;
   updateConversationLastMessage: (conversationId: string, message: Message) => void;
   markConversationMessagesRead: (conversationId: string, userId: string) => void;
@@ -263,38 +263,95 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  deleteMessage: async (messageId: string) => {
+  deleteMessage: async (messageId: string, deleteType: 'me' | 'everyone' = 'everyone') => {
     const activeId = get().activeConversationId;
     if (!activeId) return;
 
-    const res = await api.delete(`/messages/${messageId}`);
-    const deletedMsg: Message = res.data?.data || res.data;
+    try {
+      const res = await api.delete(`/messages/${messageId}?type=${deleteType}`);
+      const result = res.data?.data || res.data;
 
-    set((state) => {
-      const currentMsgs = state.messages[activeId] || [];
-      const updatedMsgs = currentMsgs.map((m) => (m._id === messageId ? deletedMsg : m));
-      const updatedConvs = state.conversations.map((c) => {
-        if (c._id === activeId && c.lastMessage?._id === messageId) {
-          return { ...c, lastMessage: deletedMsg };
+      if (deleteType === 'me') {
+        // Remove message only from current user's local state
+        set((state) => {
+          const currentMsgs = state.messages[activeId] || [];
+          const filteredMsgs = currentMsgs.filter((m) => m._id !== messageId);
+          const updatedConvs = state.conversations.map((c) => {
+            if (c._id === activeId && c.lastMessage?._id === messageId) {
+              const prevMsg = filteredMsgs.length > 0 ? filteredMsgs[filteredMsgs.length - 1] : undefined;
+              return { ...c, lastMessage: prevMsg };
+            }
+            return c;
+          });
+
+          return {
+            messages: {
+              ...state.messages,
+              [activeId]: filteredMsgs,
+            },
+            conversations: updatedConvs,
+          };
+        });
+      } else {
+        // Delete for everyone
+        const deletedMsg: Message = {
+          ...(result || {}),
+          _id: messageId,
+          conversationId: activeId,
+          isDeleted: true,
+          content: 'This message was deleted',
+          attachments: [],
+          reactions: [],
+        };
+
+        set((state) => {
+          const currentMsgs = state.messages[activeId] || [];
+          const updatedMsgs = currentMsgs.map((m) =>
+            m._id === messageId
+              ? { ...m, isDeleted: true, content: 'This message was deleted', attachments: [], reactions: [] }
+              : m
+          );
+          const updatedConvs = state.conversations.map((c) => {
+            if (c._id === activeId && c.lastMessage?._id === messageId) {
+              return {
+                ...c,
+                lastMessage: {
+                  ...c.lastMessage,
+                  isDeleted: true,
+                  content: 'This message was deleted',
+                  attachments: [],
+                  reactions: [],
+                },
+              };
+            }
+            return c;
+          });
+
+          return {
+            messages: {
+              ...state.messages,
+              [activeId]: updatedMsgs,
+            },
+            conversations: updatedConvs,
+          };
+        });
+
+        const activeConv = get().conversations.find((c) => c._id === activeId);
+        const recipientIds = activeConv?.participants.map((p) => p._id) || [];
+
+        const socket = useSocketStore.getState().socket;
+        if (socket) {
+          socket.emit('message:delete', {
+            conversationId: activeId,
+            message: deletedMsg,
+            recipientIds,
+            deleteType: 'everyone',
+          });
         }
-        return c;
-      });
-
-      return {
-        messages: {
-          ...state.messages,
-          [activeId]: updatedMsgs,
-        },
-        conversations: updatedConvs,
-      };
-    });
-
-    const socket = useSocketStore.getState().socket;
-    if (socket) {
-      socket.emit('message:delete', {
-        conversationId: activeId,
-        message: deletedMsg,
-      });
+      }
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+      throw err;
     }
   },
 
@@ -372,7 +429,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ...c,
         participants: c.participants.map((p) =>
           p._id === userId
-            ? { ...p, status, ...(lastSeen ? { lastSeen } : {}) }
+            ? {
+                ...p,
+                status,
+                lastSeen: lastSeen || (status === 'offline' ? (p.lastSeen || new Date().toISOString()) : p.lastSeen),
+              }
             : p
         ),
       })),

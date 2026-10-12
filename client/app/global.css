@@ -60,8 +60,12 @@ body {
 }
 
 /* CRT Scanline Overlay Texture */
-.crt-overlay {
+.crt-overlay:not(.absolute) {
   position: relative;
+}
+.crt-overlay.absolute,
+.absolute.crt-overlay {
+  position: absolute !important;
 }
 .crt-overlay::before {
   content: " ";

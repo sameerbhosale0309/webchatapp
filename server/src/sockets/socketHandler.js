@@ -150,11 +150,26 @@ export function setupSocketIO(io) {
     });
 
     // Message delete real-time event
-    socket.on('message:delete', ({ conversationId, message }) => {
+    socket.on('message:delete', ({ conversationId, message, recipientIds, deleteType = 'everyone' }) => {
       io.to(`conversation:${conversationId}`).emit('message:deleted', {
         conversationId,
         message,
+        deleteType,
       });
+
+      if (recipientIds && Array.isArray(recipientIds)) {
+        recipientIds.forEach((rId) => {
+          io.to(`user:${rId}`).emit('message:deleted', {
+            conversationId,
+            message,
+            deleteType,
+          });
+          io.to(`user:${rId}`).emit('conversation:updated', {
+            conversationId,
+            lastMessage: message,
+          });
+        });
+      }
     });
 
     // WebRTC Calling Signaling

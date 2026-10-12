@@ -12,11 +12,11 @@ export default function Home() {
 
   useEffect(() => {
     initAuth();
-  }, []);
+  }, [initAuth]);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setBootStep(2), 400);
-    const t2 = setTimeout(() => setBootStep(3), 800);
+    const t1 = setTimeout(() => setBootStep(2), 300);
+    const t2 = setTimeout(() => setBootStep(3), 600);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -33,6 +33,21 @@ export default function Home() {
     }
   }, [user, initialized, router]);
 
+  // Safety fallback redirect if auth initialization takes too long
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!initialized) {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('echo_token') : null;
+        if (token) {
+          router.replace('/chat');
+        } else {
+          router.replace('/login');
+        }
+      }
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [initialized, router]);
+
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center bg-canvas p-4 overflow-hidden crt-overlay font-mono">
       {/* Chassis Corner Screws */}
@@ -41,7 +56,7 @@ export default function Home() {
       <div className="absolute bottom-4 left-4 w-3 h-3 rounded-full border border-dark-oxide bg-cassette-housing flex items-center justify-center text-[9px] text-dark-oxide font-bold">+</div>
       <div className="absolute bottom-4 right-4 w-3 h-3 rounded-full border border-dark-oxide bg-cassette-housing flex items-center justify-center text-[9px] text-dark-oxide font-bold">+</div>
 
-      {/* <div className="w-full max-w-sm bg-dark-oxide text-paper-display p-6 border-4 border-chassis-sand rounded-sm shadow-2xl bevel-raised space-y-5">
+      <div className="w-full max-w-sm bg-dark-oxide text-paper-display p-6 border-4 border-chassis-sand rounded-sm shadow-2xl bevel-raised space-y-5">
         <div className="flex items-center justify-between border-b border-paper-display/20 pb-3">
           <div className="flex items-center gap-2">
             <Radio className="w-5 h-5 text-magnetic-oxide animate-pulse" />
@@ -54,7 +69,7 @@ export default function Home() {
           <Disc className="w-12 h-12 text-magnetic-oxide animate-tape-spool shadow-glow" />
         </div>
 
-        {/* <div className="space-y-1.5 text-xs text-oxide-brown">
+        <div className="space-y-1.5 text-xs text-oxide-brown">
           <p className="flex items-center justify-between">
             <span>AZIMUTH CALIBRATION:</span>
             <span className="text-emerald-400 font-bold">LOCKED [120µs]</span>
@@ -67,16 +82,16 @@ export default function Home() {
             <span>FREQUENCY BAND:</span>
             <span className="text-warning">{bootStep >= 3 ? '142.80 MHz OK' : 'SCANNING...'}</span>
           </p>
-        </div> */}
+        </div>
 
-      {/* <div className="pt-2 border-t border-paper-display/20 flex items-center justify-between text-[11px]">
+        <div className="pt-2 border-t border-paper-display/20 flex items-center justify-between text-[11px]">
           <span className="text-oxide-brown flex items-center gap-1">
             <Terminal className="w-3.5 h-3.5 text-magnetic-oxide" />
             BOOT SEQUENCE...
           </span>
           <span className="terminal-cursor" />
         </div>
-      </div> */}
+      </div>
     </main>
   );
 }

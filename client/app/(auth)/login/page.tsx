@@ -82,7 +82,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="USERNAME OR GMAIL (@GMAIL.COM)"
+            label="USERNAME OR GMAIL"
             type="text"
             placeholder="yourname@gmail.com"
             value={email}

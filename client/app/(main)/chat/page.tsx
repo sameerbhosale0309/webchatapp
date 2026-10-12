@@ -148,6 +148,8 @@ export default function ChatPage() {
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [showEmojiPickerForMsgId, setShowEmojiPickerForMsgId] = useState<string | null>(null);
   const [stampedMsgId, setStampedMsgId] = useState<string | null>(null);
+  const [messageToDelete, setMessageToDelete] = useState<Message | null>(null);
+  const [isDeletingMessage, setIsDeletingMessage] = useState(false);
 
   // Dynamic Stories & Calls Data
   const [storiesGroups, setStoriesGroups] = useState<StoryGroup[]>([]);
@@ -181,6 +183,8 @@ export default function ChatPage() {
   const [avatarInputUrl, setAvatarInputUrl] = useState('');
   const [avatarUploadProgress, setAvatarUploadProgress] = useState<number | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [isDraggingAvatar, setIsDraggingAvatar] = useState(false);
   const [editingGroupName, setEditingGroupName] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
   const [editingGroupBio, setEditingGroupBio] = useState(false);
@@ -381,6 +385,75 @@ export default function ChatPage() {
     return `${hours}:${mins}:${secs}.${ms}`;
   };
 
+  // Format last seen timestamp with proper time representation
+  const formatLastSeen = (dateStr?: string | Date) => {
+    if (!dateStr) return 'OFFLINE';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return 'OFFLINE';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (60 * 1000));
+
+    // Proper time formatting (e.g. 2:45 PM)
+    const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (diffMins < 1) {
+      return 'Last seen just now';
+    }
+
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return `Last seen today at ${timeStr}`;
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday =
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear();
+
+    if (isYesterday) {
+      return `Last seen yesterday at ${timeStr}`;
+    }
+
+    if (diffMs < 6 * 24 * 60 * 60 * 1000) {
+      const weekday = date.toLocaleDateString([], { weekday: 'short' });
+      return `Last seen ${weekday} at ${timeStr}`;
+    }
+
+    const dateFormatted = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `Last seen ${dateFormatted} at ${timeStr}`;
+  };
+
+  // Delete message confirmation handler
+  const handleConfirmDelete = async (type: 'me' | 'everyone') => {
+    if (!messageToDelete) return;
+    try {
+      setIsDeletingMessage(true);
+      await deleteMessage(messageToDelete._id, type);
+      soundEffects.playClick();
+      showToast({
+        title: type === 'everyone' ? 'MESSAGE DELETED FOR EVERYONE' : 'MESSAGE DELETED FOR YOU',
+        variant: 'success',
+      });
+      setMessageToDelete(null);
+    } catch (err: any) {
+      showToast({
+        title: 'DELETE FAILED',
+        description: err?.response?.data?.message || 'Failed to delete message',
+        variant: 'error',
+      });
+    } finally {
+      setIsDeletingMessage(false);
+    }
+  };
+
   // Conversation Details
   const getConversationDetails = (conv: Conversation) => {
     const validParticipants = (conv.participants || []).filter(Boolean);
@@ -402,7 +475,7 @@ export default function ChatPage() {
         name: myCustomName || other?.username || 'OPERATOR',
         originalName: other?.username || 'OPERATOR',
         avatar: other?.avatar || '',
-        statusText: isOnline ? 'RECEIVER ONLINE' : 'RECEIVER OFFLINE',
+        statusText: isOnline ? 'RECEIVER ONLINE' : formatLastSeen(other?.lastSeen),
         description: other?.bio || '',
         isOnline,
         otherUser: other,
@@ -639,19 +712,25 @@ export default function ChatPage() {
 
   const handleAvatarFileUpload = async (file: File) => {
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast({ title: 'INVALID FILE FORMAT', description: 'Please select an image file (JPG, PNG, WEBP, GIF).', variant: 'error' });
+      return;
+    }
     soundEffects.playClick();
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreviewUrl(previewUrl);
     setIsUploadingAvatar(true);
     setAvatarUploadProgress(0);
 
     let currentProgress = 0;
     const progressInterval = setInterval(() => {
-      currentProgress += Math.floor(Math.random() * 12) + 8;
+      currentProgress += Math.floor(Math.random() * 10) + 6;
       if (currentProgress > 92) {
         currentProgress = 92;
         clearInterval(progressInterval);
       }
       setAvatarUploadProgress(currentProgress);
-    }, 120);
+    }, 100);
 
     try {
       showToast({ title: 'UPLOADING AVATAR PHOTO...', variant: 'info' });
@@ -676,6 +755,7 @@ export default function ChatPage() {
       setTimeout(() => {
         setIsUploadingAvatar(false);
         setAvatarUploadProgress(null);
+        setAvatarPreviewUrl(null);
         setIsAvatarModalOpen(false);
         showToast({ title: 'AVATAR UPDATED SUCCESSFULLY!', variant: 'success' });
       }, 700);
@@ -683,8 +763,22 @@ export default function ChatPage() {
       clearInterval(progressInterval);
       setIsUploadingAvatar(false);
       setAvatarUploadProgress(null);
+      setAvatarPreviewUrl(null);
       console.error('Avatar upload error:', err);
       showToast({ title: 'FAILED TO UPLOAD AVATAR', description: err.message || 'Upload failed', variant: 'error' });
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    soundEffects.playClick();
+    try {
+      await api.patch('/users/profile', { avatar: '' });
+      updateUser({ avatar: '' });
+      setAvatarPreviewUrl(null);
+      setIsAvatarModalOpen(false);
+      showToast({ title: 'AVATAR REMOVED', variant: 'info' });
+    } catch (err: any) {
+      showToast({ title: 'FAILED TO REMOVE AVATAR', description: err.message || 'Failed to remove', variant: 'error' });
     }
   };
 
@@ -1289,108 +1383,136 @@ export default function ChatPage() {
                           </div>
 
                           <div className="relative max-w-md sm:max-w-lg">
-                            <div
-                              className={`p-3 rounded-sm border-2 border-dark-oxide text-xs font-mono shadow-md relative ${isMe
-                                ? 'bg-magnetic-oxide text-paper-display bevel-raised'
-                                : 'bg-[#e7e7e7] text-[#2c2725] bevel-recessed font-semibold'
-                                } ${stampedMsgId === msg._id ? 'animate-rubber-stamp' : ''}`}
-                            >
-                              {msg.content && <p className="leading-relaxed whitespace-pre-wrap font-bold text-[#2c2725]">{msg.content}</p>}
+                            {msg.isDeleted ? (
+                              <div
+                                className={`p-3 rounded-sm border-2 border-dark-oxide text-xs font-mono shadow-md relative ${isMe
+                                  ? 'bg-magnetic-oxide/30 text-paper-display bevel-recessed'
+                                  : 'bg-[#e0dedd] text-[#666] bevel-recessed'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2 italic text-xs py-0.5 select-none font-semibold text-dark-oxide">
+                                  <Trash2 className="w-3.5 h-3.5 text-oxide-brown shrink-0" />
+                                  <span>This message was deleted</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div
+                                  className={`p-3 rounded-sm border-2 border-dark-oxide text-xs font-mono shadow-md relative ${isMe
+                                    ? 'bg-magnetic-oxide text-paper-display bevel-raised'
+                                    : 'bg-[#e7e7e7] text-[#2c2725] bevel-recessed font-semibold'
+                                    } ${stampedMsgId === msg._id ? 'animate-rubber-stamp' : ''}`}
+                                >
+                                  {msg.content && <p className="leading-relaxed whitespace-pre-wrap font-bold text-[#2c2725]">{msg.content}</p>}
 
-                              {msg.attachments && msg.attachments.length > 0 && (
-                                <div className="mt-2 space-y-2">
-                                  {msg.attachments.map((att, idx) => (
-                                    <div key={idx}>
-                                      {att.type === 'image' ? (
-                                        <img
-                                          src={att.url}
-                                          alt={att.name || 'Attachment image'}
-                                          onError={(e) => {
-                                            const target = e.target as HTMLImageElement;
-                                            target.onerror = null;
-                                            target.src = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80';
-                                          }}
-                                          className="rounded-sm border border-dark-oxide max-h-64 max-w-full object-cover shadow-sm cursor-pointer hover:opacity-95"
-                                          onClick={() => window.open(att.url, '_blank')}
-                                        />
-                                      ) : att.type === 'audio' ? (
-                                        <AudioPlayer src={att.url} name={att.name} isMe={isMe} />
+                                  {msg.attachments && msg.attachments.length > 0 && (
+                                    <div className="mt-2 space-y-2">
+                                      {msg.attachments.map((att, idx) => (
+                                        <div key={idx}>
+                                          {att.type === 'image' ? (
+                                            <img
+                                              src={att.url}
+                                              alt={att.name || 'Attachment image'}
+                                              onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.onerror = null;
+                                                target.src = 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=600&auto=format&fit=crop&q=80';
+                                              }}
+                                              className="rounded-sm border border-dark-oxide max-h-64 max-w-full object-cover shadow-sm cursor-pointer hover:opacity-95"
+                                              onClick={() => window.open(att.url, '_blank')}
+                                            />
+                                          ) : att.type === 'audio' ? (
+                                            <AudioPlayer src={att.url} name={att.name} isMe={isMe} />
+                                          ) : (
+                                            <a href={att.url} target="_blank" rel="noreferrer" className="p-2 rounded-sm bg-dark-oxide text-paper-display border border-black flex items-center gap-2">
+                                              <FileText className="w-4 h-4 text-magnetic-oxide" />
+                                              <span className="truncate">{att.name}</span>
+                                            </a>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {isMe && (
+                                    <div className="mt-2 flex items-center justify-end gap-1 text-[10px] text-paper-display/80 font-mono">
+                                      <span>STATUS:</span>
+                                      {isRead ? (
+                                        <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                                          <span className="w-2 h-2 rounded-full led-bulb-green" />
+                                          READ
+                                        </span>
                                       ) : (
-                                        <a href={att.url} target="_blank" rel="noreferrer" className="p-2 rounded-sm bg-dark-oxide text-paper-display border border-black flex items-center gap-2">
-                                          <FileText className="w-4 h-4 text-magnetic-oxide" />
-                                          <span className="truncate">{att.name}</span>
-                                        </a>
+                                        <span className="flex items-center gap-1 text-amber-400 font-bold">
+                                          <span className="w-2 h-2 rounded-full led-bulb-amber" />
+                                          DELIVERED
+                                        </span>
                                       )}
                                     </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {isMe && (
-                                <div className="mt-2 flex items-center justify-end gap-1 text-[10px] text-paper-display/80 font-mono">
-                                  <span>STATUS:</span>
-                                  {isRead ? (
-                                    <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                                      <span className="w-2 h-2 rounded-full led-bulb-green" />
-                                      READ
-                                    </span>
-                                  ) : (
-                                    <span className="flex items-center gap-1 text-amber-400 font-bold">
-                                      <span className="w-2 h-2 rounded-full led-bulb-amber" />
-                                      DELIVERED
-                                    </span>
                                   )}
                                 </div>
-                              )}
-                            </div>
 
-                            {msg.reactions && msg.reactions.length > 0 && (
-                              <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                {msg.reactions.map((r, rIdx) => (
-                                  <span
-                                    key={rIdx}
-                                    onClick={() => handleAddReaction(msg._id, r.emoji)}
-                                    className="px-2 py-0.5 rounded-sm bg-dark-oxide text-paper-display border border-black text-[11px] font-bold flex items-center gap-1 shadow-sm cursor-pointer hover:bg-black transition-colors"
+                                {msg.reactions && msg.reactions.length > 0 && (
+                                  <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    {msg.reactions.map((r, rIdx) => (
+                                      <span
+                                        key={rIdx}
+                                        onClick={() => handleAddReaction(msg._id, r.emoji)}
+                                        className="px-2 py-0.5 rounded-sm bg-dark-oxide text-paper-display border border-black text-[11px] font-bold flex items-center gap-1 shadow-sm cursor-pointer hover:bg-black transition-colors"
+                                      >
+                                        <span>{r.emoji}</span>
+                                        <span className="text-[10px] text-magnetic-oxide">{(r as any).users?.length || 1}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className={`absolute top-1 ${isMe ? '-left-16' : '-right-16'} opacity-0 group-hover:opacity-100 transition-opacity z-20 flex items-center gap-1`}>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setShowEmojiPickerForMsgId(showEmojiPickerForMsgId === msg._id ? null : msg._id);
+                                    }}
+                                    className="p-1 rounded-sm bg-dark-oxide text-paper-display hover:bg-black border border-black shadow-sm"
+                                    title="React with emoji"
                                   >
-                                    <span>{r.emoji}</span>
-                                    <span className="text-[10px] text-magnetic-oxide">{(r as any).users?.length || 1}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
+                                    <Smile className="w-3.5 h-3.5" />
+                                  </button>
 
-                            <div className={`absolute top-1 ${isMe ? '-left-8' : '-right-8'} opacity-0 group-hover:opacity-100 transition-opacity z-20`}>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setShowEmojiPickerForMsgId(showEmojiPickerForMsgId === msg._id ? null : msg._id);
-                                }}
-                                className="p-1 rounded-sm bg-dark-oxide text-paper-display hover:bg-black border border-black shadow-sm"
-                                title="React with emoji"
-                              >
-                                <Smile className="w-3.5 h-3.5" />
-                              </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMessageToDelete(msg);
+                                    }}
+                                    className="p-1 rounded-sm bg-dark-oxide text-paper-display hover:bg-danger hover:text-paper-display border border-black shadow-sm transition-colors"
+                                    title="Delete message"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
 
-                              {showEmojiPickerForMsgId === msg._id && (
-                                <motion.div
-                                  initial={{ scale: 0.8, opacity: 0 }}
-                                  animate={{ scale: 1, opacity: 1 }}
-                                  className={`absolute ${isMe ? 'right-0' : 'left-0'} top-7 z-40 p-2 bg-chassis-sand border-2 border-dark-oxide rounded-sm shadow-2xl flex items-center gap-1.5 whitespace-nowrap`}
-                                >
-                                  {REACTION_EMOJIS.map((emoji) => (
-                                    <button
-                                      key={emoji}
-                                      type="button"
-                                      onClick={() => handleAddReaction(msg._id, emoji)}
-                                      className="p-1 text-sm hover:scale-125 transition-transform"
+                                  {showEmojiPickerForMsgId === msg._id && (
+                                    <motion.div
+                                      initial={{ scale: 0.8, opacity: 0 }}
+                                      animate={{ scale: 1, opacity: 1 }}
+                                      className={`absolute ${isMe ? 'right-0' : 'left-0'} top-7 z-40 p-2 bg-chassis-sand border-2 border-dark-oxide rounded-sm shadow-2xl flex items-center gap-1.5 whitespace-nowrap`}
                                     >
-                                      {emoji}
-                                    </button>
-                                  ))}
-                                </motion.div>
-                              )}
-                            </div>
+                                      {REACTION_EMOJIS.map((emoji) => (
+                                        <button
+                                          key={emoji}
+                                          type="button"
+                                          onClick={() => handleAddReaction(msg._id, emoji)}
+                                          className="p-1 text-sm hover:scale-125 transition-transform"
+                                        >
+                                          {emoji}
+                                        </button>
+                                      ))}
+                                    </motion.div>
+                                  )}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </motion.div>
                       );
@@ -1871,7 +1993,7 @@ export default function ChatPage() {
                                 {isSelf && <span className="text-[9px] text-oxide-brown">(YOU)</span>}
                               </div>
                               <span className="text-[9px] font-bold text-magnetic-oxide uppercase">
-                                {isAdmin ? '[ADMIN]' : '[MEMBER]'}
+                                {isAdmin ? '[ADMIN]' : '[MEMBER]'} • {onlineUserIds.has(member._id) ? 'ONLINE' : formatLastSeen(member.lastSeen)}
                               </span>
                             </div>
                           </div>
@@ -1929,7 +2051,9 @@ export default function ChatPage() {
                         {getConversationDetails(activeConversation).name}
                       </h3>
                       <p className="text-[10px] text-oxide-brown font-mono mt-0.5">
-                        {getConversationDetails(activeConversation).isOnline ? 'Online now' : 'Last seen recently'}
+                        {getConversationDetails(activeConversation).isOnline
+                          ? 'Online now'
+                          : formatLastSeen(getConversationDetails(activeConversation).otherUser?.lastSeen)}
                       </p>
                     </div>
                   </div>
@@ -1990,6 +2114,68 @@ export default function ChatPage() {
       </div>
 
       {/* MODALS */}
+      {/* DELETE MESSAGE CONFIRMATION MODAL */}
+      <Modal
+        open={!!messageToDelete}
+        onClose={() => {
+          if (!isDeletingMessage) setMessageToDelete(null);
+        }}
+        title="DELETE MESSAGE"
+      >
+        <div className="space-y-4 font-mono text-xs">
+          <div className="p-3 bg-paper-display border border-dark-oxide/40 rounded-sm text-xs font-mono text-dark-oxide bevel-recessed shadow-inner">
+            <div className="flex items-center justify-between gap-1.5 text-[10px] text-oxide-brown mb-1.5 font-bold uppercase">
+              <span>
+                {messageToDelete?.sender._id === user?._id ? '[OUTGOING TRANSMISSION]' : `[FROM: ${messageToDelete?.sender.username?.toUpperCase()}]`}
+              </span>
+              <span>{messageToDelete ? formatTimeStr(messageToDelete.createdAt).slice(0, 5) : ''}</span>
+            </div>
+            <p className="line-clamp-3 font-bold text-dark-oxide break-words whitespace-pre-wrap">
+              {messageToDelete?.content || (messageToDelete?.attachments?.length ? '[BINARY ATTACHMENT]' : '[EMPTY MESSAGE]')}
+            </p>
+          </div>
+
+          <p className="text-xs font-mono text-dark-oxide font-medium leading-relaxed">
+            {messageToDelete?.sender._id === user?._id
+              ? "How would you like to delete this transmission from the chat record?"
+              : "Delete this message from your device record?"}
+          </p>
+
+          <div className="space-y-2 pt-1">
+            {messageToDelete?.sender._id === user?._id && (
+              <button
+                type="button"
+                disabled={isDeletingMessage}
+                onClick={() => handleConfirmDelete('everyone')}
+                className="w-full p-2.5 bg-danger text-paper-display hover:bg-red-800 disabled:opacity-50 border-2 border-dark-oxide rounded-sm text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-2 bevel-raised transition-all cursor-pointer shadow-md"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingMessage ? 'DELETING...' : 'DELETE FOR EVERYONE'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={isDeletingMessage}
+              onClick={() => handleConfirmDelete('me')}
+              className="w-full p-2.5 bg-paper-display text-dark-oxide hover:bg-magnetic-oxide hover:text-paper-display disabled:opacity-50 border-2 border-dark-oxide rounded-sm text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-2 bevel-raised transition-all cursor-pointer shadow-md"
+            >
+              <Trash2 className="w-4 h-4 text-oxide-brown" />
+              <span>{isDeletingMessage ? 'DELETING...' : 'DELETE FOR ME'}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isDeletingMessage}
+              onClick={() => setMessageToDelete(null)}
+              className="w-full p-2 bg-chassis-sand text-dark-oxide hover:bg-cassette-housing disabled:opacity-50 border border-dark-oxide/50 rounded-sm text-xs font-mono font-bold uppercase tracking-wider bevel-raised transition-all cursor-pointer"
+            >
+              CANCEL
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={isNewChatModalOpen} onClose={() => { setIsNewChatModalOpen(false); setUserSearchInput(''); }} title="START A NEW CHAT">
         <div className="space-y-4 font-mono text-xs">
           <Input label="SEARCH USERNAME" placeholder="Type username..." value={userSearchInput} onChange={(e) => handleSearchUsers(e.target.value)} />
@@ -2187,7 +2373,16 @@ export default function ChatPage() {
       </Modal>
 
       {/* CHANGE AVATAR MODAL */}
-      <Modal open={isAvatarModalOpen} onClose={() => { if (!isUploadingAvatar) setIsAvatarModalOpen(false); }} title="UPDATE OPERATOR AVATAR">
+      <Modal
+        open={isAvatarModalOpen}
+        onClose={() => {
+          if (!isUploadingAvatar) {
+            setIsAvatarModalOpen(false);
+            setAvatarPreviewUrl(null);
+          }
+        }}
+        title="OPERATOR AVATAR CONFIGURATION"
+      >
         <div className="space-y-4 font-mono text-xs">
           <input
             type="file"
@@ -2197,52 +2392,141 @@ export default function ChatPage() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) handleAvatarFileUpload(file);
+              e.target.value = '';
             }}
           />
 
-          {/* Avatar Preview with 0-100% Progress Ring Overlay */}
-          <div className="flex flex-col items-center justify-center p-4 bg-chassis-sand border border-dark-oxide/40 rounded-sm bevel-recessed space-y-2">
-            <Avatar
-              initials={user?.username?.slice(0, 2) || 'OP'}
-              src={user?.avatar}
-              size="xl"
-              className="shadow-md mx-auto"
-              uploadProgress={avatarUploadProgress}
-              isUploading={isUploadingAvatar}
-            />
+          {/* AVATAR HERO PREVIEW & TELEMETRY */}
+          <div className="relative p-5 bg-gradient-to-b from-[#241f1d] to-[#1a1716] border-2 border-dark-oxide rounded-sm bevel-recessed shadow-2xl flex flex-col items-center justify-center text-center overflow-hidden">
+            {/* Metallic corner screws */}
+            <div className="absolute top-1.5 left-1.5 text-[8px] text-oxide-brown/40 font-bold">+</div>
+            <div className="absolute top-1.5 right-1.5 text-[8px] text-oxide-brown/40 font-bold">+</div>
+            <div className="absolute bottom-1.5 left-1.5 text-[8px] text-oxide-brown/40 font-bold">+</div>
+            <div className="absolute bottom-1.5 right-1.5 text-[8px] text-oxide-brown/40 font-bold">+</div>
+
+            {/* Glowing Accent Ambient Halo */}
+            <div className="absolute w-36 h-36 rounded-full bg-emerald-500/10 blur-xl pointer-events-none" />
+
+            {/* Prominent Avatar Frame */}
+            <div className="relative p-1.5 rounded-sm bg-chassis-sand border-2 border-dark-oxide bevel-raised shadow-lg mb-3">
+              <Avatar
+                initials={user?.username?.slice(0, 2) || 'OP'}
+                src={avatarPreviewUrl || user?.avatar}
+                size="2xl"
+                className="shadow-inner"
+                uploadProgress={avatarUploadProgress}
+                isUploading={isUploadingAvatar}
+              />
+              <div className="absolute -top-1.5 -right-1.5 p-1 bg-dark-oxide border border-paper-display/40 rounded-full text-emerald-400 shadow-md">
+                <Disc className={`w-3.5 h-3.5 ${isUploadingAvatar ? 'animate-tape-spool' : ''}`} />
+              </div>
+            </div>
+
+            {/* Operator Identifier & Callout */}
+            <div className="space-y-1 z-10">
+              <span className="font-extrabold text-sm text-paper-display tracking-wider uppercase block">
+                {user?.username || 'OPERATOR'}
+              </span>
+              <span className="text-[10px] text-oxide-brown font-mono tracking-wider block">
+                {isUploadingAvatar ? 'TRANSMITTING HIGH-RES TELEMETRY STREAM' : 'CURRENT BIO-METRIC PROFILE PICTURE'}
+              </span>
+            </div>
+
+            {/* Telemetry Progress Bar & Live Ticker */}
             {isUploadingAvatar && (
-              <div className="text-center space-y-1">
-                <span className="font-extrabold text-[11px] uppercase tracking-wider text-magnetic-oxide mechanical-counter animate-pulse block">
-                  [TELEMETRY UPLOADING: {avatarUploadProgress ?? 0}%]
-                </span>
-                <div className="w-48 h-2 bg-dark-oxide rounded-full overflow-hidden border border-black p-0.5 mx-auto">
+              <div className="w-full max-w-xs mt-3 pt-3 border-t border-white/10 space-y-2 z-10">
+                <div className="flex items-center justify-between text-[10px] font-bold tracking-wider">
+                  <span className="text-emerald-400 flex items-center gap-1.5 uppercase">
+                    <span className="w-2 h-2 rounded-full led-bulb-green animate-pulse" />
+                    UPLOADING PORTRAIT DATA
+                  </span>
+                  <span className="mechanical-counter text-emerald-300">
+                    {`[${(avatarUploadProgress ?? 0).toString().padStart(3, '0')}%]`}
+                  </span>
+                </div>
+
+                <div className="w-full h-3 bg-black/80 rounded-sm overflow-hidden border border-white/20 p-0.5 shadow-inner">
                   <div
-                    className="h-full bg-emerald-400 rounded-full transition-all duration-150"
+                    className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-300 rounded-2xs transition-all duration-150 ease-out shadow-[0_0_8px_rgba(45,224,160,0.6)]"
                     style={{ width: `${avatarUploadProgress ?? 0}%` }}
                   />
+                </div>
+
+                <div className="flex items-center justify-between text-[9px] text-oxide-brown">
+                  <span>TRANSFER PROTOCOL: TLS 1.3</span>
+                  <span>BURST BUFFER: ENCRYPTED</span>
                 </div>
               </div>
             )}
           </div>
 
-          {/* DASHED UPLOAD PHOTO DROPZONE */}
+          {/* DRAG & DROP ZONE */}
           <div
-            onClick={() => { if (!isUploadingAvatar) avatarFileInputRef.current?.click(); }}
-            className={`w-full p-8 border-2 border-dashed border-[#f97316] rounded-xl bg-[#1c1817] transition-colors flex flex-col items-center justify-center gap-3 cursor-pointer group shadow-inner ${isUploadingAvatar ? 'opacity-60 pointer-events-none' : 'hover:bg-[#282220]'}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!isUploadingAvatar) setIsDraggingAvatar(true);
+            }}
+            onDragLeave={() => setIsDraggingAvatar(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingAvatar(false);
+              if (isUploadingAvatar) return;
+              const file = e.dataTransfer.files?.[0];
+              if (file) handleAvatarFileUpload(file);
+            }}
+            onClick={() => {
+              if (!isUploadingAvatar) avatarFileInputRef.current?.click();
+            }}
+            className={`w-full p-6 border-2 border-dashed rounded-sm transition-all duration-150 flex flex-col items-center justify-center gap-2 cursor-pointer group shadow-sm bevel-recessed ${
+              isUploadingAvatar
+                ? 'opacity-50 pointer-events-none border-dark-oxide/40 bg-chassis-sand/50'
+                : isDraggingAvatar
+                ? 'border-emerald-500 bg-emerald-950/20 scale-[0.99]'
+                : 'border-dark-oxide/50 hover:border-magnetic-oxide bg-chassis-sand hover:bg-paper-display/80'
+            }`}
           >
-            <div className="p-3 rounded-full bg-[#f97316]/10 text-[#f97316] group-hover:scale-110 transition-transform">
+            <div className="p-3 rounded-sm bg-paper-display border border-dark-oxide text-dark-oxide group-hover:bg-magnetic-oxide group-hover:text-paper-display bevel-raised transition-all">
               {isUploadingAvatar ? (
-                <Radio className="w-8 h-8 text-[#f97316] animate-pulse" />
+                <Radio className="w-6 h-6 animate-pulse text-emerald-600" />
               ) : (
-                <Camera className="w-8 h-8 text-[#f97316]" />
+                <Camera className="w-6 h-6 group-hover:scale-110 transition-transform" />
               )}
             </div>
-            <span className="font-extrabold text-xs uppercase tracking-wider text-white">
-              {isUploadingAvatar ? `[UPLOADING PHOTO: ${avatarUploadProgress ?? 0}%]` : 'UPLOAD PHOTO'}
-            </span>
-            <span className="text-[10px] text-oxide-brown text-center">
-              Click to select an image from your device (JPG, PNG, WEBP)
-            </span>
+
+            <div className="text-center space-y-0.5">
+              <span className="font-extrabold text-xs uppercase tracking-wider text-dark-oxide block">
+                {isDraggingAvatar ? 'DROP IMAGE FILE HERE' : 'CHOOSE OR DROP IMAGE FILE'}
+              </span>
+              <span className="text-[10px] text-oxide-brown block">
+                Supports JPG, PNG, WEBP, GIF (Max 10MB)
+              </span>
+            </div>
+          </div>
+
+          {/* ACTION BUTTONS */}
+          <div className="flex items-center gap-2 pt-1">
+            {user?.avatar && !isUploadingAvatar && (
+              <button
+                type="button"
+                onClick={handleRemoveAvatar}
+                className="flex-1 p-2 bg-paper-display text-danger hover:bg-red-700 hover:text-white border border-dark-oxide/50 rounded-sm text-xs font-mono font-bold uppercase tracking-wider bevel-raised transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>REMOVE AVATAR</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={isUploadingAvatar}
+              onClick={() => {
+                setIsAvatarModalOpen(false);
+                setAvatarPreviewUrl(null);
+              }}
+              className="flex-1 p-2 bg-paper-display text-dark-oxide hover:bg-cassette-housing disabled:opacity-50 border border-dark-oxide/50 rounded-sm text-xs font-mono font-bold uppercase tracking-wider bevel-raised transition-all cursor-pointer"
+            >
+              CLOSE
+            </button>
           </div>
         </div>
       </Modal>

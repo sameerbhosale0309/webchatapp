@@ -9,7 +9,8 @@ function getSocketUrl(): string {
   let url = process.env.NEXT_PUBLIC_SOCKET_URL || '';
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    if (!url || ((url.includes('localhost') || url.includes('127.0.0.1')) && host !== 'localhost' && host !== '127.0.0.1')) {
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.') || host.endsWith('.local');
+    if (!url || ((url.includes('localhost') || url.includes('127.0.0.1')) && !isLocal)) {
       url = 'https://vartalaab-backend.onrender.com';
     }
   }
@@ -188,11 +189,18 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     newSocket.on('message:deleted', ({ conversationId, message }: { conversationId: string; message: Message }) => {
       const chatStore = useChatStore.getState();
       const currentMsgs = chatStore.messages[conversationId] || [];
-      const updated = currentMsgs.map((m) => (m._id === message._id ? message : m));
+      const deletedFormatted: Message = {
+        ...message,
+        isDeleted: true,
+        content: message.content || 'This message was deleted',
+        attachments: [],
+        reactions: [],
+      };
+      const updated = currentMsgs.map((m) => (m._id === message._id ? { ...m, ...deletedFormatted } : m));
 
       const updatedConvs = chatStore.conversations.map((c) => {
         if (c._id === conversationId && c.lastMessage?._id === message._id) {
-          return { ...c, lastMessage: message };
+          return { ...c, lastMessage: { ...c.lastMessage, ...deletedFormatted } };
         }
         return c;
       });

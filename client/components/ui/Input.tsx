@@ -16,7 +16,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (playSound) {
-        import('@/lib/soundEffects').then(({ soundEffects }) => soundEffects.playTyping()).catch(() => {});
+        import('@/lib/soundEffects').then(({ soundEffects }) => soundEffects.playTyping()).catch(() => { });
       }
       if (onChange) {
         onChange(e);

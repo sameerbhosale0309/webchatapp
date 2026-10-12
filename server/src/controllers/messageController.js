@@ -11,7 +11,10 @@ export async function getMessages(req, res) {
       return res.status(404).json({ success: false, message: 'Conversation not found' });
     }
 
-    const query = { conversationId };
+    const query = {
+      conversationId,
+      deletedFor: { $ne: req.userId },
+    };
     if (before) {
       query.createdAt = { $lt: new Date(before) };
     }
@@ -126,22 +129,69 @@ export async function toggleReaction(req, res) {
 export async function deleteMessage(req, res) {
   try {
     const { id } = req.params;
+    const deleteType = req.body?.type || req.query?.type || 'everyone';
 
     const message = await Message.findById(id);
     if (!message) {
       return res.status(404).json({ success: false, message: 'Message not found' });
     }
 
+    const conversation = await Conversation.findById(message.conversationId);
+    if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    const isParticipant = conversation.participants.some(
+      (p) => p.toString() === req.userId
+    );
+    if (!isParticipant && message.sender.toString() !== req.userId) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete in this conversation' });
+    }
+
+    if (deleteType === 'me') {
+      if (!message.deletedFor) {
+        message.deletedFor = [];
+      }
+      if (!message.deletedFor.some((uid) => uid.toString() === req.userId)) {
+        message.deletedFor.push(req.userId);
+        await message.save();
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          _id: message._id,
+          conversationId: message.conversationId,
+          deleteType: 'me',
+        },
+      });
+    }
+
+    // Delete for everyone
     if (message.sender.toString() !== req.userId) {
-      return res.status(403).json({ success: false, message: 'Not authorized to delete this message' });
+      return res.status(403).json({ success: false, message: 'Only the sender can delete this message for everyone' });
     }
 
     message.isDeleted = true;
     message.content = 'This message was deleted';
     message.attachments = [];
+    message.reactions = [];
     await message.save();
 
-    return res.status(200).json({ success: true, data: message });
+    const populated = await Message.findById(message._id)
+      .populate('sender', 'username email avatar status')
+      .populate({
+        path: 'replyTo',
+        populate: { path: 'sender', select: 'username' },
+      });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...populated.toObject(),
+        deleteType: 'everyone',
+      },
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
